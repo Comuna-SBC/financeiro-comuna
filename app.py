@@ -755,7 +755,8 @@ elif page == "Visão Excel (Consolidado)":
 # ==========================================
 # ==========================================
 # ==========================================
-# TESOURARIA (COM RECORRÊNCIA INTELIGENTE E EDIÇÃO NA ABA 4)
+# ==========================================
+# TESOURARIA (COM ORDENAÇÃO E EDIÇÃO DO DIA FIXO NA ABA 4)
 # ==========================================
 elif page == "Tesouraria":
     st.title("Tesouraria")
@@ -764,10 +765,7 @@ elif page == "Tesouraria":
     with tab1:
         st.markdown("### Registrar Movimentação")
         
-        # 1. Seleção de Tipo no Topo
         tipo_lanc = st.radio("Tipo", ["Entrada", "Saída"], horizontal=True, key="novo_lanc_tipo")
-        
-        # 2. Checkbox de Recorrência logo abaixo do tipo
         recorrente = st.checkbox("🔁 Este é um lançamento recorrente (despesa ou receita fixa mensal)", key="novo_lanc_rec")
 
         with st.form("form_novo_lancamento", clear_on_submit=True):
@@ -960,8 +958,12 @@ elif page == "Tesouraria":
             if 'categoria_nome' not in recorrencias_ativas.columns:
                 recorrencias_ativas['categoria_nome'] = recorrencias_ativas['categoria_id'].astype(str).map(map_cat)
 
+            # Ordenação solicitada: Saídas em cima (0), Entradas embaixo (1). Segundo sort: Data Até (mais próxima/ascendente primeiro)
+            recorrencias_ativas['ordem_tipo'] = recorrencias_ativas['tipo'].map({'Saída': 0, 'Entrada': 1})
+            recorrencias_ativas['dt_fim_sort'] = pd.to_datetime(recorrencias_ativas['data_fim_recorrencia'], errors='coerce')
+            recorrencias_ativas = recorrencias_ativas.sort_values(by=['ordem_tipo', 'dt_fim_sort'], ascending=[True, True])
+
             st.markdown("---")
-            # Cabeçalho da listagem
             h1, h2, h3, h4, h5, h6, h7 = st.columns([1.2, 2.5, 2, 1.3, 1.3, 1.3, 1.2])
             h1.markdown("**Tipo**")
             h2.markdown("**Descrição**")
@@ -1001,7 +1003,6 @@ elif page == "Tesouraria":
                     time.sleep(1)
                     st.rerun()
 
-                # Bloco de edição inline caso o botão editar seja acionado
                 if st.session_state.get(f"editing_rec_{rec_id}", False):
                     with st.container():
                         st.markdown(f"---")
@@ -1009,7 +1010,10 @@ elif page == "Tesouraria":
                         with st.form(f"form_edit_rec_{rec_id}"):
                             e_tipo = st.selectbox("Tipo", ["Entrada", "Saída"], index=0 if rec_row['tipo'] == "Entrada" else 1, key=f"ed_rec_tipo_{rec_id}")
                             e_desc = st.text_input("Descrição", value=rec_row['descricao'], key=f"ed_rec_desc_{rec_id}")
-                            e_valor = st.number_input("Valor Base (R$)", value=float(rec_row['valor'] or 0), format="%.2f", key=f"ed_rec_val_{rec_id}")
+                            
+                            c_val_dia = st.columns(2)
+                            e_valor = c_val_dia[0].number_input("Valor Base (R$)", value=float(rec_row['valor'] or 0), format="%.2f", key=f"ed_rec_val_{rec_id}")
+                            e_dia = c_val_dia[1].number_input("Dia Fixo de Vencimento", min_value=1, max_value=31, value=int(rec_row.get('dia_vencimento_fixo') or 10), step=1, key=f"ed_rec_dia_{rec_id}")
                             
                             cats_r_edit = [c for c in categorias_db if c.get("tipo") == e_tipo]
                             opcoes_cats_r = {c["nome"]: c["id"] for c in cats_r_edit}
@@ -1028,6 +1032,7 @@ elif page == "Tesouraria":
                                     "descricao": e_desc,
                                     "tipo": e_tipo,
                                     "valor": float(e_valor),
+                                    "dia_vencimento_fixo": int(e_dia),
                                     "categoria_id": opcoes_cats_r[e_cat] if opcoes_cats_r else None,
                                     "data_competencia": str(e_dt_ini),
                                     "data_vencimento": str(e_dt_ini),
