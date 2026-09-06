@@ -562,7 +562,7 @@ if page == "Resumo do Dia":
 # VISÃO EXCEL (CONSOLIDADO)
 # ==========================================
 elif page == "Visão Excel (Consolidado)":
-    st.title("📋 Visão Excel (Consolidado)")
+    st.title("📋 Visão Consolidada")
     st.markdown("Acompanhe o balanço mensal de Entradas e Saídas consolidado por categoria.")
 
     df = carregar_lancamentos_df()
