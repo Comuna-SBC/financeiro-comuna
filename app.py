@@ -432,7 +432,7 @@ nav_button("Analytics Financeiro", "📊")
 nav_button("Exportar Contabilidade", "📤")
 
 st.sidebar.markdown("---")
-st.sidebar.caption("Gestão Financeira • v4.2")
+st.sidebar.caption("Gestão Financeira • v4.3")
 
 page = st.session_state.page
 
@@ -945,7 +945,7 @@ elif page == "Inscrições e Comprovantes":
         evento_sel = st.selectbox("Evento", list(evento_opcoes.keys()))
         evento_id_sel = evento_opcoes[evento_sel]
 
-        inscricoes_evento = [i for i in carregar("inscricoes") if i.get('evento_id'] == evento_id_sel]
+        inscricoes_evento = [i for i in carregar("inscricoes") if i.get('evento_id') == evento_id_sel]
         pagamentos_all = carregar("inscricao_pagamentos")
         map_insc = {i["id"]: i for i in inscricoes_evento}
 
