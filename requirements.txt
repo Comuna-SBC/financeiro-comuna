@@ -3,3 +3,4 @@ supabase
 Pillow
 pandas
 plotly
+requests
