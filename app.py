@@ -1237,6 +1237,7 @@ elif page == "Analytics Financeiro":
 
 # ==========================================
 # ==========================================
+# ==========================================
 # EXPORTAR CONTABILIDADE (COM DOWNLOAD DE ANEXOS EM ZIP)
 # ==========================================
 elif page == "Exportar Contabilidade":
@@ -1278,7 +1279,7 @@ elif page == "Exportar Contabilidade":
             import zipfile
             
             # Botão para baixar Pacote ZIP (Excel + Anexos do Mês)
-            if st.button("📦 Baixar Pacote ZIP (Excel + Anexos)", use_keyword_arguments=True, use_container_width=True):
+            if st.button("📦 Baixar Pacote ZIP (Excel + Anexos)", use_container_width=True):
                 with st.spinner("Empacotando lançamentos e baixando anexos..."):
                     zip_buffer = io.BytesIO()
                     
@@ -1303,7 +1304,6 @@ elif page == "Exportar Contabilidade":
                                         zip_file.writestr(nome_no_zip, file_res)
                                         anexos_adicionados += 1
                                 except Exception:
-                                    # Ignora caso o arquivo não exista mais no storage ou dê falha pontual
                                     pass
                                     
                     zip_buffer.seek(0)
