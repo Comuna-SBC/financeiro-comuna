@@ -876,76 +876,78 @@ elif page == "Tesouraria":
                     lambda r: f"{r['id']} | {r['data_competencia'].strftime('%d/%m/%Y')} - {r['descricao']} (R$ {r['valor']})", axis=1
                 ).tolist()
                 
-                lanc_selecionado = st.selectbox("Buscar Lançamento (Digite para pesquisar)", opcoes_lanc)
+                lanc_selecionado = st.selectbox("Buscar Lançamento (Digite para pesquisar)", opcoes_lanc, key="select_busca_lancamento_historico")
                 
-                if lanc_selecionado:
-                    id_lanc = int(lanc_selecionado.split(" | ")[0])
-                    lanc_raw = next((l for l in carregar("lancamentos") if l['id'] == id_lanc), None)
-                    
-                    if lanc_raw:
-                        st.markdown("---")
-                        with st.form(f"form_edit_lanc"):
-                            el1, el2, el3 = st.columns(3)
-                            n_desc = el1.text_input("Descrição", value=lanc_raw.get('descricao', ''))
-                            n_valor = el2.number_input("Valor (R$)", value=float(lanc_raw.get('valor') or 0), format="%.2f")
-                            n_data_comp = el3.date_input("Data de Competência", pd.to_datetime(lanc_raw.get('data_competencia')).date())
-                            
-                            opcoes_cats_edit = {f"{c['nome']} ({c['tipo']})": c['id'] for c in categorias_db}
-                            nome_cat_atual = next((f"{c['nome']} ({c['tipo']})" for c in categorias_db if str(c['id']) == str(lanc_raw.get('categoria_id'))), None)
-                            idx_cat = list(opcoes_cats_edit.keys()).index(nome_cat_atual) if nome_cat_atual in opcoes_cats_edit else 0
-                            
-                            el4, el5, el6 = st.columns(3)
-                            n_cat = el4.selectbox("Categoria", list(opcoes_cats_edit.keys()), index=idx_cat)
-                            n_status = el5.selectbox("Situação", ["Concluído", "Pendente"], index=0 if lanc_raw.get('status') == "Concluído" else 1)
-                            
-                            dt_venc = lanc_raw.get('data_vencimento')
-                            n_venc = el6.date_input("Vencimento (Se Pendente)", pd.to_datetime(dt_venc).date() if pd.notna(dt_venc) and dt_venc else n_data_comp)
-                            
-                            opcoes_contas = {"Nenhuma": None} | {c['nome']: c['id'] for c in contas_bancarias_db}
-                            nome_conta_atual = next((c['nome'] for c in contas_bancarias_db if str(c['id']) == str(lanc_raw.get('conta_bancaria_id'))), "Nenhuma")
-                            idx_conta = list(opcoes_contas.keys()).index(nome_conta_atual) if nome_conta_atual in opcoes_contas else 0
-                            
-                            opcoes_eventos = ["Nenhum"] + [e['nome'] for e in eventos_db]
-                            projeto_atual = lanc_raw.get('centro_custo') if lanc_raw.get('centro_custo') in opcoes_eventos else "Nenhum"
-                            idx_evento = opcoes_eventos.index(projeto_atual)
-                            
-                            el7, el8 = st.columns(2)
-                            n_conta = el7.selectbox("Conta Bancária", list(opcoes_contas.keys()), index=idx_conta)
-                            n_proj = el8.selectbox("Projeto / Evento", opcoes_eventos, index=idx_evento)
-                            
-                            c_b1, c_b2 = st.columns(2)
-                            btn_upd_lanc = c_b1.form_submit_button("💾 Salvar Alterações", use_container_width=True)
-                            btn_del_lanc = c_b2.form_submit_button("🗑️ Excluir Lançamento", use_container_width=True)
-                            
-                            if btn_upd_lanc:
-                                carga = {
-                                    "descricao": n_desc, "valor": float(n_valor), "data_competencia": str(n_data_comp),
-                                    "categoria_id": opcoes_cats_edit[n_cat], "status": n_status,
-                                    "data_vencimento": str(n_venc) if n_status == "Pendente" else None,
-                                    "conta_bancaria_id": opcoes_contas[n_conta],
-                                    "centro_custo": None if n_proj == "Nenhum" else n_proj
-                                }
-                                tipo_real = "Entrada" if "Entrada" in n_cat else "Saída"
-                                carga["tipo"] = tipo_real
+                if lanc_selecionado and " | " in lanc_selecionado:
+                    id_str = lanc_selecionado.split(" | ")[0]
+                    if id_str.isdigit():
+                        id_lanc = int(id_str)
+                        lanc_raw = next((l for l in carregar("lancamentos") if l['id'] == id_lanc), None)
+                        
+                        if lanc_raw:
+                            st.markdown("---")
+                            with st.form(f"form_edit_lanc_{id_lanc}"):
+                                el1, el2, el3 = st.columns(3)
+                                n_desc = el1.text_input("Descrição", value=lanc_raw.get('descricao', ''), key=f"edit_desc_{id_lanc}")
+                                n_valor = el2.number_input("Valor (R$)", value=float(lanc_raw.get('valor') or 0), format="%.2f", key=f"edit_valor_{id_lanc}")
+                                n_data_comp = el3.date_input("Data de Competência", pd.to_datetime(lanc_raw.get('data_competencia')).date(), key=f"edit_data_{id_lanc}")
                                 
-                                res = sb_request("lancamentos", "PATCH", carga, filtros={"id": f"eq.{id_lanc}"})
-                                if res is not None:
-                                    st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1.5); st.rerun()
+                                opcoes_cats_edit = {f"{c['nome']} ({c['tipo']})": c['id'] for c in categorias_db}
+                                nome_cat_atual = next((f"{c['nome']} ({c['tipo']})" for c in categorias_db if str(c['id']) == str(lanc_raw.get('categoria_id'))), None)
+                                idx_cat = list(opcoes_cats_edit.keys()).index(nome_cat_atual) if nome_cat_atual in opcoes_cats_edit else 0
+                                
+                                el4, el5, el6 = st.columns(3)
+                                n_cat = el4.selectbox("Categoria", list(opcoes_cats_edit.keys()), index=idx_cat, key=f"edit_cat_{id_lanc}")
+                                n_status = el5.selectbox("Situação", ["Concluído", "Pendente"], index=0 if lanc_raw.get('status') == "Concluído" else 1, key=f"edit_status_{id_lanc}")
+                                
+                                dt_venc = lanc_raw.get('data_vencimento')
+                                n_venc = el6.date_input("Vencimento (Se Pendente)", pd.to_datetime(dt_venc).date() if pd.notna(dt_venc) and dt_venc else n_data_comp, key=f"edit_venc_{id_lanc}")
+                                
+                                opcoes_contas = {"Nenhuma": None} | {c['nome']: c['id'] for c in contas_bancarias_db}
+                                nome_conta_atual = next((c['nome'] for c in contas_bancarias_db if str(c['id']) == str(lanc_raw.get('conta_bancaria_id'))), "Nenhuma")
+                                idx_conta = list(opcoes_contas.keys()).index(nome_conta_atual) if nome_conta_atual in opcoes_contas else 0
+                                
+                                opcoes_eventos = ["Nenhum"] + [e['nome'] for e in eventos_db]
+                                projeto_atual = lanc_raw.get('centro_custo') if lanc_raw.get('centro_custo') in opcoes_eventos else "Nenhum"
+                                idx_evento = opcoes_eventos.index(projeto_atual)
+                                
+                                el7, el8 = st.columns(2)
+                                n_conta = el7.selectbox("Conta Bancária", list(opcoes_contas.keys()), index=idx_conta, key=f"edit_conta_{id_lanc}")
+                                n_proj = el8.selectbox("Projeto / Evento", opcoes_eventos, index=idx_evento, key=f"edit_proj_{id_lanc}")
+                                
+                                c_b1, c_b2 = st.columns(2)
+                                btn_upd_lanc = c_b1.form_submit_button("💾 Salvar Alterações", use_container_width=True)
+                                btn_del_lanc = c_b2.form_submit_button("🗑️ Excluir Lançamento", use_container_width=True)
+                                
+                                if btn_upd_lanc:
+                                    carga = {
+                                        "descricao": n_desc, "valor": float(n_valor), "data_competencia": str(n_data_comp),
+                                        "categoria_id": opcoes_cats_edit[n_cat], "status": n_status,
+                                        "data_vencimento": str(n_venc) if n_status == "Pendente" else None,
+                                        "conta_bancaria_id": opcoes_contas[n_conta],
+                                        "centro_custo": None if n_proj == "Nenhum" else n_proj
+                                    }
+                                    tipo_real = "Entrada" if "Entrada" in n_cat else "Saída"
+                                    carga["tipo"] = tipo_real
                                     
-                            if btn_del_lanc:
-                                res = sb_request("lancamentos", "DELETE", filtros={"id": f"eq.{id_lanc}"})
-                                if res is not None:
-                                    st.cache_data.clear(); st.success("Excluído!"); time.sleep(1.5); st.rerun()
+                                    res = sb_request("lancamentos", "PATCH", carga, filtros={"id": f"eq.{id_lanc}"})
+                                    if res is not None:
+                                        st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1.5); st.rerun()
+                                        
+                                if btn_del_lanc:
+                                    res = sb_request("lancamentos", "DELETE", filtros={"id": f"eq.{id_lanc}"})
+                                    if res is not None:
+                                        st.cache_data.clear(); st.success("Excluído!"); time.sleep(1.5); st.rerun()
 
             st.markdown("---")
             col1, col2 = st.columns(2)
-            filtro_tipo = col1.multiselect("Tipo", ["Entrada", "Saída"], default=["Entrada", "Saída"])
-            filtro_status = col2.multiselect("Situação", df['status'].unique().tolist(), default=df['status'].unique().tolist())
+            filtro_tipo = col1.multiselect("Tipo", ["Entrada", "Saída"], default=["Entrada", "Saída"], key="hist_filtro_tipo")
+            filtro_status = col2.multiselect("Situação", df['status'].unique().tolist(), default=df['status'].unique().tolist(), key="hist_filtro_status")
             dff = df[df['tipo'].isin(filtro_tipo) & df['status'].isin(filtro_status)].sort_values('data_competencia', ascending=False)
             exibir = dff[['data_competencia', 'tipo', 'descricao', 'categoria_nome', 'valor', 'status', 'centro_custo', 'conta_nome']].copy()
             exibir['data_competencia'] = exibir['data_competencia'].dt.strftime('%d/%m/%Y')
             exibir.columns = ['Data', 'Tipo', 'Descrição', 'Categoria', 'Valor (R$)', 'Situação', 'Projeto', 'Conta']
-            st.dataframe(exibir, use_container_width=True, hide_index=True)# ==========================================
+            st.dataframe(exibir, use_container_width=True, hide_index=True)
 # ==========================================
 # ==========================================
 # CONCILIAÇÃO BANCÁRIA (COM IMPORTAÇÃO INTELIGENTE DE OFX)
