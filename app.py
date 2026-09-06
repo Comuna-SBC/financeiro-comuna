@@ -453,6 +453,7 @@ page = st.session_state.page
 
 # ==========================================
 # ==========================================
+# ==========================================
 # RESUMO DO DIA 
 # ==========================================
 if page == "Resumo do Dia":
@@ -477,7 +478,6 @@ if page == "Resumo do Dia":
     contas_hoje = contas_pendentes[contas_pendentes["data_vencimento"] == hoje].copy() if not contas_pendentes.empty and "data_vencimento" in contas_pendentes.columns else pd.DataFrame()
     contas_atrasadas = contas_pendentes[contas_pendentes["data_vencimento"] < hoje].copy() if not contas_pendentes.empty and "data_vencimento" in contas_pendentes.columns else pd.DataFrame()
 
-    # Filtro para recorrências expirando no mês atual
     recorrencias_expirando = pd.DataFrame()
     if not df.empty and 'recorrente' in df.columns and 'data_fim_recorrencia' in df.columns:
         df['data_fim_recorrencia'] = pd.to_datetime(df['data_fim_recorrencia'], errors='coerce')
@@ -489,7 +489,7 @@ if page == "Resumo do Dia":
             (df['data_fim_recorrencia'].dt.year == ano_atual_num)
         ]
 
-    pagamentos_pendentes = [p for p in pagamentos_resumo if p.get("status") == "Pendente"]
+    pagamentos_pendentes = [p for p in pagamentos_resumo if p.get("status"] == "Pendente"]
     inscricoes_por_id = {str(i.get("id")): i for i in inscricoes_resumo}
     eventos_por_id = {str(e.get("id")): e for e in eventos_resumo}
 
@@ -499,7 +499,6 @@ if page == "Resumo do Dia":
     col3.metric("Contas Atrasadas", str(len(contas_atrasadas)))
     col4.metric("Recorrências Expirando", str(len(recorrencias_expirando)))
 
-    # Alerta visual para recorrências expirando neste mês
     if not recorrencias_expirando.empty:
         st.warning(f"⚠️ Atenção: Existem **{len(recorrencias_expirando)}** lançamentos recorrentes com data final de recorrência programada para este mês de {MESES_PT[hoje.month-1].lower()}. Verifique a necessidade de renovação.")
 
@@ -533,9 +532,9 @@ if page == "Resumo do Dia":
                 with linha2:
                     st.write(fmt_moeda(lancamento.get("valor")))
                 with linha3:
-                    # Alterado de botão de baixa direta para redirecionamento para a Tesouraria
                     if st.button("🔍 Detalhes", key=f"resumo_detalhes_{lancamento['id']}", use_container_width=True):
                         st.session_state.page = "Tesouraria"
+                        st.session_state["tesouraria_tab"] = "⏳ Contas a Pagar/Receber"
                         st.rerun()
                 st.markdown("<hr style='margin:6px 0;border:none;border-top:1px solid #E2E8F0;'>", unsafe_allow_html=True)
 
