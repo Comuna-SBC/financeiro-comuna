@@ -30,11 +30,11 @@ def init_connection():
     key = st.secrets.get("SUPABASE_KEY", "")
     if not url or not key:
         return None
-    # Inicializa o cliente Supabase injetando a chave service_role com bypass de RLS
+    # Usa o ClientOptions oficial do Supabase para injetar a chave com segurança
     return create_client(
         url, 
         key, 
-        options={"headers": {"apikey": key, "Authorization": f"Bearer {key}"}}
+        options=ClientOptions(headers={"apikey": key, "Authorization": f"Bearer {key}"})
     )
 
 supabase = init_connection()
