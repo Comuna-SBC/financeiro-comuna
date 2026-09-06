@@ -943,8 +943,9 @@ elif page == "Tesouraria":
                 if len(selecionados) > 1:
                     st.warning("⚠️ Marque apenas UM lançamento por vez para editar.")
                 elif len(selecionados) == 1:
-                    id_lanc = int(selecionados.iloc[0]['id'])
-                    lanc_raw = next((l for l in carregar("lancamentos") if l['id'] == id_lanc), None)
+                    # Correção: Tratamento seguro do ID sem conversão rígida para int
+                    id_lanc = str(selecionados.iloc[0]['id'])
+                    lanc_raw = next((l for l in carregar("lancamentos") if str(l.get('id')) == id_lanc), None)
                     
                     if lanc_raw:
                         st.markdown(f"---")
