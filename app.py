@@ -453,7 +453,7 @@ page = st.session_state.page
 
 # ==========================================
 # ==========================================
-# RESUMO DO DIA (COM ALERTA DE RECORRÊNCIAS EXPIRANDO)
+# RESUMO DO DIA 
 # ==========================================
 if page == "Resumo do Dia":
     st.title("Resumo do Dia")
@@ -533,11 +533,10 @@ if page == "Resumo do Dia":
                 with linha2:
                     st.write(fmt_moeda(lancamento.get("valor")))
                 with linha3:
-                    if st.button("✅ Marcar pago", key=f"resumo_pagar_{lancamento['id']}", use_container_width=True):
-                        resultado = sb_request("lancamentos", "PATCH", {"status": "Concluído", "data_pagamento": str(date.today())}, filtros={"id": f"eq.{lancamento['id']}"})
-                        if resultado is not None:
-                            st.cache_data.clear()
-                            st.rerun()
+                    # Alterado de botão de baixa direta para redirecionamento para a Tesouraria
+                    if st.button("🔍 Detalhes", key=f"resumo_detalhes_{lancamento['id']}", use_container_width=True):
+                        st.session_state.page = "Tesouraria"
+                        st.rerun()
                 st.markdown("<hr style='margin:6px 0;border:none;border-top:1px solid #E2E8F0;'>", unsafe_allow_html=True)
 
     with coluna_comprovantes:
