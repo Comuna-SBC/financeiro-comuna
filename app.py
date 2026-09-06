@@ -432,7 +432,7 @@ secao("OPERACIONAL")
 nav_button("Resumo do Dia", "🏠")
 nav_button("Tesouraria", "💰")
 nav_button("Conciliação Bancária", "🏦")
-nav_button("Visão Excel (Consolidado)", "📋")
+nav_button("Visão Consolidada", "📋")
 
 secao("GESTÃO DE EVENTOS")
 nav_button("Painel de Eventos", "🎫")
@@ -561,7 +561,7 @@ if page == "Resumo do Dia":
 # ==========================================
 # VISÃO EXCEL (CONSOLIDADO)
 # ==========================================
-elif page == "Visão Excel (Consolidado)":
+elif page == "Visão Consolidada":
     st.title("📋 Visão Consolidada")
     st.markdown("Acompanhe o balanço mensal de Entradas e Saídas consolidado por categoria.")
 
