@@ -947,6 +947,7 @@ elif page == "Tesouraria":
             exibir.columns = ['Data', 'Tipo', 'Descrição', 'Categoria', 'Valor (R$)', 'Situação', 'Projeto', 'Conta']
             st.dataframe(exibir, use_container_width=True, hide_index=True)# ==========================================
 # ==========================================
+# ==========================================
 # CONCILIAÇÃO BANCÁRIA (COM IMPORTAÇÃO INTELIGENTE DE OFX)
 # ==========================================
 elif page == "Conciliação Bancária":
@@ -958,7 +959,7 @@ elif page == "Conciliação Bancária":
         with st.expander("➕ Cadastrar Conta Bancária"):
             with st.form("form_conta", clear_on_submit=True):
                 nome_conta = st.text_input("Nome da Conta (Ex: Itaú Principal)")
-                tipo_conta = st.selectbox("Tipo", ["Corrente", "Poupança", "Investimento"])
+                tipo_conta = st.selectbox("Tipo", ["Corrente", "Poupança", "Investimento"], key="tipo_conta_novo")
                 saldo_inicial = st.number_input("Saldo Inicial (R$)", min_value=0.0, format="%.2f")
                 if st.form_submit_button("Cadastrar Conta", use_container_width=True):
                     if nome_conta:
@@ -972,12 +973,12 @@ elif page == "Conciliação Bancária":
         with st.expander("✏️ Editar ou Excluir Conta"):
             if contas_bancarias_db:
                 conta_map = {c['nome']: c for c in contas_bancarias_db}
-                conta_sel_edit = st.selectbox("Selecione a Conta", list(conta_map.keys()))
+                conta_sel_edit = st.selectbox("Selecione a Conta", list(conta_map.keys()), key="select_conta_edicao_unica")
                 conta_data = conta_map[conta_sel_edit]
                 
                 with st.form("form_edit_conta"):
                     n_nome = st.text_input("Nome da Conta", value=conta_data['nome'])
-                    n_tipo = st.selectbox("Tipo", ["Corrente", "Poupança", "Investimento"], index=["Corrente", "Poupança", "Investimento"].index(conta_data.get('tipo', 'Corrente')))
+                    n_tipo = st.selectbox("Tipo", ["Corrente", "Poupança", "Investimento"], index=["Corrente", "Poupança", "Investimento"].index(conta_data.get('tipo', 'Corrente')), key="tipo_conta_edit")
                     n_saldo = st.number_input("Saldo Inicial (R$)", value=float(conta_data.get('saldo_inicial') or 0.0), format="%.2f")
                     
                     c_btn1, c_btn2 = st.columns(2)
@@ -997,7 +998,8 @@ elif page == "Conciliação Bancária":
         st.info("Cadastre ao menos uma conta bancária acima para iniciar a conciliação.")
     else:
         conta_opcoes = {c["nome"]: c["id"] for c in contas_bancarias_db}
-        conta_sel = st.selectbox("Selecione a Conta", list(conta_opcoes.keys()))
+        # Chave única aplicada para evitar conflito com o selectbox do expander acima
+        conta_sel = st.selectbox("Selecione a Conta", list(conta_opcoes.keys()), key="select_conta_principal_conciliacao")
         conta_id = conta_opcoes[conta_sel]
 
         df = carregar_lancamentos_df()
@@ -1032,7 +1034,6 @@ elif page == "Conciliação Bancária":
                 content = arquivo_ofx.read().decode('latin1', errors='ignore')
                 transacoes = []
                 
-                # Leitura nativa do padrão OFX
                 for bloco in re.split(r'<STMTTRN>', content)[1:]:
                     dt_match = re.search(r'<DTPOSTED>(\d{8})', bloco)
                     valor_match = re.search(r'<TRNAMT>([-\d\.]+)', bloco)
@@ -1042,7 +1043,7 @@ elif page == "Conciliação Bancária":
                         dt = pd.to_datetime(dt_match.group(1), format='%Y%m%d').date()
                         valor = float(valor_match.group(1))
                         desc = desc_match.group(1).strip() if desc_match else "Extrato Bancário"
-                        desc = re.sub(r'<[^>]+>', '', desc) # Limpa tags HTML se houver
+                        desc = re.sub(r'<[^>]+>', '', desc)
                         transacoes.append({
                             "Data": dt,
                             "Valor": abs(valor),
@@ -1054,13 +1055,11 @@ elif page == "Conciliação Bancária":
                 df_ofx = pd.DataFrame(transacoes)
 
                 if not df_ofx.empty:
-                    # Motor de cruzamento de dados (Ignora o que já foi validado em eventos)
                     used_ids = set()
                     for idx, row in df_ofx.iterrows():
                         if not df_conta.empty:
                             mask_tipo = df_conta['tipo'] == row['Tipo']
                             mask_valor = df_conta['valor'] == row['Valor']
-                            # Margem de segurança de 3 dias para compensação bancária
                             mask_data = (pd.to_datetime(df_conta['data_competencia']).dt.date - row['Data']).apply(lambda x: abs(x.days)) <= 3
                             mask_used = ~df_conta['id'].isin(used_ids)
 
@@ -1070,11 +1069,10 @@ elif page == "Conciliação Bancária":
                                 df_ofx.at[idx, 'Status'] = 'Já no sistema'
                                 used_ids.add(match_id)
 
-                    # Filtra apenas as ENTRADAS órfãs (possíveis dízimos e ofertas não registrados)
                     df_entradas_novas = df_ofx[(df_ofx['Status'] == 'Não registrado') & (df_ofx['Tipo'] == 'Entrada')].copy()
 
                     if df_entradas_novas.empty:
-                        st.success("🎉 Todas as entradas deste extrato já constam e batem com o sistema (Eventos, PIX, etc)!")
+                        st.success("🎉 Todas as entradas deste extrato já constam e batem com o sistema!")
                     else:
                         st.info(f"Encontramos **{len(df_entradas_novas)} transferências (PIX/Depósitos)** no extrato que ainda não constam no sistema.")
                         df_entradas_novas.insert(0, 'Cadastrar', False)
@@ -1088,9 +1086,8 @@ elif page == "Conciliação Bancária":
                         col_cat, col_btn = st.columns([2, 1])
                         opcoes_cats_entrada = {c["nome"]: c["id"] for c in categorias_db if c["tipo"] == "Entrada"}
                         
-                        # Tenta deixar "Dízimos e Ofertas" pré-selecionado por padrão
                         cat_padrao = "Dízimos e Ofertas" if "Dízimos e Ofertas" in opcoes_cats_entrada else list(opcoes_cats_entrada.keys())[0]
-                        cat_lote = col_cat.selectbox("Classificar os itens marcados como:", list(opcoes_cats_entrada.keys()), index=list(opcoes_cats_entrada.keys()).index(cat_padrao))
+                        cat_lote = col_cat.selectbox("Classificar os itens marcados como:", list(opcoes_cats_entrada.keys()), index=list(opcoes_cats_entrada.keys()).index(cat_padrao), key="select_cat_lote_ofx")
 
                         if col_btn.button("💾 Salvar Marcados no Banco", type="primary", use_container_width=True):
                             itens_selecionados = df_editado[df_editado['Cadastrar'] == True]
