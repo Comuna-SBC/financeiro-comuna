@@ -40,20 +40,24 @@ if not supabase:
 
 @st.cache_data(ttl=600)
 def carregar_categorias():
-    res = supabase.table("categorias").select("*").execute()
-    if not res.data:
-        padroes = [
-            {"nome": "Dízimos e Ofertas", "tipo": "Entrada", "codigo_contabil": "3.2.10.01"},
-            {"nome": "Missões", "tipo": "Saída", "codigo_contabil": "3.2.20.50"},
-            {"nome": "Gestão de Pessoas", "tipo": "Saída", "codigo_contabil": "3.2.20.10"},
-            {"nome": "Aluguel", "tipo": "Saída", "codigo_contabil": "3.2.20.101"},
-            {"nome": "Consumo (Água, Luz)", "tipo": "Saída", "codigo_contabil": "3.2.20.15"},
-            {"nome": "Manutenção do Patrimônio", "tipo": "Saída", "codigo_contabil": "3.2.20.30"},
-            {"nome": "Eventos", "tipo": "Saída", "codigo_contabil": "3.2.20.40"}
-        ]
-        supabase.table("categorias").insert(padroes).execute()
+    try:
         res = supabase.table("categorias").select("*").execute()
-    return res.data
+        if not res.data:
+            padroes = [
+                {"nome": "Dízimos e Ofertas", "tipo": "Entrada", "codigo_contabil": "3.2.10.01"},
+                {"nome": "Missões", "tipo": "Saída", "codigo_contabil": "3.2.20.50"},
+                {"nome": "Gestão de Pessoas", "tipo": "Saída", "codigo_contabil": "3.2.20.10"},
+                {"nome": "Aluguel", "tipo": "Saída", "codigo_contabil": "3.2.20.101"},
+                {"nome": "Consumo (Água, Luz)", "tipo": "Saída", "codigo_contabil": "3.2.20.15"},
+                {"nome": "Manutenção do Patrimônio", "tipo": "Saída", "codigo_contabil": "3.2.20.30"},
+                {"nome": "Eventos", "tipo": "Saída", "codigo_contabil": "3.2.20.40"}
+            ]
+            supabase.table("categorias").insert(padroes).execute()
+            res = supabase.table("categorias").select("*").execute()
+        return res.data if res.data else []
+    except Exception as e:
+        st.error(f"Erro crítico ao acessar a tabela 'categorias' no Supabase: {e}")
+        return []
 
 categorias_db = carregar_categorias()
 
