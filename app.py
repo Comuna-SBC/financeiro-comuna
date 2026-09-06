@@ -13,7 +13,7 @@ import requests
 # CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM (CLARO / FINTECH)
 # ==========================================
 st.set_page_config(
-    page_title="Financeiro COMUNA", 
+    page_title="Gestão Financeira Igreja", 
     page_icon="⛪", 
     layout="wide", 
     initial_sidebar_state="expanded"
@@ -411,7 +411,7 @@ def nav_button(label, icon):
         st.session_state.page = label
         st.rerun()
 
-st.sidebar.markdown("<h2 style='color:#0F172A;font-weight:800;padding-top:6px;'>⛪ COMUNA</h2>", unsafe_allow_html=True)
+st.sidebar.markdown("<h2 style='color:#0F172A;font-weight:800;padding-top:6px;'>⛪ Gestão Financeira Igreja </h2>", unsafe_allow_html=True)
 
 secao("OPERACIONAL")
 nav_button("Resumo do Dia", "🏠")
