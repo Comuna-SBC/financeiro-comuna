@@ -9,7 +9,7 @@ import plotly.express as px
 import requests
 
 # ==========================================
-# 1. CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM (UX/UI)
+# 1. CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM (UX/UI PROFISSIONAL)
 # ==========================================
 st.set_page_config(
     page_title="Financeiro COMUNA", 
@@ -18,110 +18,115 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilização CSS Profissional Avançada
+# Estilização CSS Clean, Moderna e Sofisticada (Fundo Claro, Estilo Fintech)
 st.markdown("""
     <style>
-    /* Importação de fonte moderna */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
 
     html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
+        font-family: 'Plus Jakarta Sans', sans-serif;
     }
 
-    /* Fundo geral e espaçamentos */
+    /* Fundo geral da aplicação limpo e iluminado */
     .main {
-        background-color: #0B0F19;
-        color: #F3F4F6;
-        padding: 2rem 1.5rem;
+        background-color: #F8FAFC;
+        color: #1E293B;
+        padding: 2rem 2rem;
     }
     
-    /* Sidebar refinada */
+    /* Sidebar moderna e elegante */
     [data-testid="stSidebar"] {
-        background-color: #111827;
-        border-right: 1px solid #1F2937;
+        background-color: #FFFFFF;
+        border-right: 1px solid #E2E8F0;
     }
     
     [data-testid="stSidebar"] .stRadio label {
-        font-size: 1rem !important;
+        font-size: 0.95rem !important;
         font-weight: 500 !important;
-        padding: 10px 14px !important;
-        border-radius: 8px;
+        padding: 12px 16px !important;
+        border-radius: 10px;
         transition: all 0.2s ease;
-        color: #D1D5DB !important;
+        color: #475569 !important;
+        margin-bottom: 4px;
     }
     
     [data-testid="stSidebar"] .stRadio label:hover {
-        background-color: #1F2937;
-        color: #FFFFFF !important;
+        background-color: #F1F5F9;
+        color: #0F172A !important;
     }
 
-    /* Cards de Métricas (KPIs) com efeito moderno */
+    /* Cards de Métricas (KPIs) com visual clean */
     div[data-testid="stMetric"] {
-        background: #161E2E;
-        border: 1px solid #1F2937;
-        padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        padding: 22px;
+        border-radius: 14px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.01);
     }
     div[data-testid="stMetricValue"] {
-        color: #34D399;
-        font-size: 1.8rem !important;
+        color: #059669;
+        font-size: 2rem !important;
         font-weight: 700;
     }
     div[data-testid="stMetricLabel"] {
-        color: #9CA3AF !important;
-        font-size: 0.95rem !important;
-        font-weight: 500;
+        color: #64748B !important;
+        font-size: 0.9rem !important;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
 
-    /* Formulários e Inputs Profissionais */
+    /* Formulários e Containers Brancos */
     div[data-testid="stForm"] {
-        background-color: #161E2E;
-        padding: 30px;
+        background-color: #FFFFFF;
+        padding: 35px;
         border-radius: 16px;
-        border: 1px solid #1F2937;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        border: 1px solid #E2E8F0;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.03);
     }
 
-    /* Ajuste de inputs para eliminar textos pretos ou contrastes ruins */
+    /* Inputs de formulário altamente refinados */
     .stTextInput input, .stNumberInput input, .stSelectbox select, .stDateInput input {
-        background-color: #0B0F19 !important;
-        color: #F3F4F6 !important;
-        border: 1px solid #374151 !important;
-        border-radius: 8px !important;
-        padding: 10px 14px !important;
+        background-color: #F8FAFC !important;
+        color: #0F172A !important;
+        border: 1px solid #CBD5E1 !important;
+        border-radius: 10px !important;
+        padding: 12px 16px !important;
+        font-size: 0.95rem !important;
     }
     
     .stTextInput input:focus, .stNumberInput input:focus {
-        border-color: #3B82F6 !important;
-        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        border-color: #2563EB !important;
+        background-color: #FFFFFF !important;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
     }
 
-    /* Botões de Ação Principais com altura ideal e toque moderno */
+    /* Botões de Ação Principais (Grandes, Ergonômicos e Elegantes) */
     .stButton button, div[data-testid="stFormSubmitButton"] button {
         background-color: #2563EB !important;
         color: white !important;
         font-weight: 600 !important;
-        padding: 0.75rem 1.5rem !important;
-        border-radius: 8px !important;
+        font-size: 1rem !important;
+        padding: 0.85rem 1.5rem !important;
+        border-radius: 10px !important;
         border: none !important;
         width: 100%;
-        transition: background-color 0.2s;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+        transition: all 0.2s ease;
     }
     .stButton button:hover, div[data-testid="stFormSubmitButton"] button:hover {
         background-color: #1D4ED8 !important;
+        box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
     }
 
-    /* Títulos e Cabeçalhos */
+    /* Cabeçalhos claros e tipografia profissional */
     h1, h2, h3 {
-        color: #F9FAFB !important;
+        color: #0F172A !important;
         font-weight: 700 !important;
     }
     
-    /* Tabelas limpas */
-    dataframe {
-        border-radius: 8px;
-        overflow: hidden;
+    p, span, label {
+        color: #334155;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -231,9 +236,9 @@ def comprimir_e_fazer_upload(arquivo_upload):
         return None
 
 # ==========================================
-# 5. MENU LATERAL PROFISSIONAL
+# 5. MENU LATERAL CLEAN E CORPORATIVO
 # ==========================================
-st.sidebar.markdown("<h2 style='text-align: center; color: #F3F4F6; margin-bottom: 20px;'>⛪ COMUNA</h2>", unsafe_allow_html=True)
+st.sidebar.markdown("<h2 style='color: #0F172A; font-weight: 700; padding-top: 10px; margin-bottom: 20px;'>⛪ COMUNA</h2>", unsafe_allow_html=True)
 
 menu = st.sidebar.radio(
     "Menu Principal", 
@@ -247,14 +252,14 @@ menu = st.sidebar.radio(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.caption("Painel Financeiro Integrado v2.4")
+st.sidebar.caption("Gestão Financeira • v3.0")
 
 # ------------------------------------------
-# TELA 1: LANÇAMENTOS (UX Otimizada)
+# TELA 1: LANÇAMENTOS
 # ------------------------------------------
 if menu == "📝 Lançar Movimentação":
     st.title("Novo Lançamento")
-    st.markdown("Insira os dados da movimentação diária com rapidez e segurança.")
+    st.markdown("Registre entradas e saídas de forma rápida e segura.")
     st.markdown("")
     
     with st.form("form_lancamento", clear_on_submit=True):
@@ -264,7 +269,7 @@ if menu == "📝 Lançar Movimentação":
         with col2:
             valor = st.number_input("Valor (R$)", min_value=0.0, step=50.0, format="%.2f")
         with col3:
-            data_comp = st.date_input("Data Competência", date.today())
+            data_comp = st.date_input("Data de Competência", date.today())
         
         st.markdown("")
         cats_filtradas = [c for c in categorias_db if c.get("tipo") == tipo_lanc]
@@ -351,13 +356,13 @@ elif menu == "📊 Dashboard Congregacional":
         if not df_filtrado.empty:
             df_agrupado = df_filtrado.groupby(['mes_ano', 'tipo'])['valor'].sum().reset_index()
             fig_bar = px.bar(df_agrupado, x='mes_ano', y='valor', color='tipo', barmode='group',
-                             color_discrete_map={'Entrada': '#3B82F6', 'Saída': '#EF4444'})
-            fig_bar.add_hline(y=100000, line_dash="dot", annotation_text="Meta Entradas", line_color="#3B82F6")
+                             color_discrete_map={'Entrada': '#2563EB', 'Saída': '#EF4444'})
+            fig_bar.add_hline(y=100000, line_dash="dot", annotation_text="Meta Entradas", line_color="#2563EB")
             fig_bar.add_hline(y=70000, line_dash="dot", annotation_text="Teto Saídas", line_color="#EF4444")
             fig_bar.update_layout(
                 plot_bgcolor='rgba(0,0,0,0)', 
                 paper_bgcolor='rgba(0,0,0,0)', 
-                font_color='#F3F4F6',
+                font_color='#1E293B',
                 legend_title_text=''
             )
             st.plotly_chart(fig_bar, use_container_width=True)
@@ -381,8 +386,8 @@ elif menu == "📽️ Apresentação Trimestral":
             if not df_saidas.empty:
                 df_pizza = df_saidas.groupby('categoria_nome')['valor'].sum().reset_index()
                 fig_pie = px.pie(df_pizza, values='valor', names='categoria_nome', hole=0.5,
-                                 color_discrete_sequence=px.colors.qualitative.Prism)
-                fig_pie.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='#F3F4F6')
+                                 color_discrete_sequence=px.colors.qualitative.Pastel)
+                fig_pie.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='#1E293B')
                 fig_pie.update_traces(textposition='inside', textinfo='percent+label')
                 st.plotly_chart(fig_pie, use_container_width=True)
             else:
@@ -391,12 +396,12 @@ elif menu == "📽️ Apresentação Trimestral":
         with col_g2:
             st.subheader("Narrativa Ministerial")
             st.markdown("""
-            <div style="background-color: #161E2E; padding: 20px; border-radius: 12px; border: 1px solid #1F2937;">
-                <h4 style="color: #34D399; margin-top: 0;">🏆 Principais Conquistas</h4>
-                <p style="color: #D1D5DB; font-size: 0.95rem;">Organização automatizada do fluxo financeiro, corte de despesas redundantes e estabilização do fundo de reserva.</p>
+            <div style="background-color: #FFFFFF; padding: 25px; border-radius: 14px; border: 1px solid #E2E8F0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);">
+                <h4 style="color: #059669; margin-top: 0; font-weight: 700;">🏆 Principais Conquistas</h4>
+                <p style="color: #475569; font-size: 0.95rem; line-height: 1.5;">Organização automatizada do fluxo financeiro, corte de despesas redundantes e estabilização do fundo de reserva.</p>
                 
-                <h4 style="color: #F59E0B; margin-top: 15px;">🎯 Alvos e Próximos Passos</h4>
-                <p style="color: #D1D5DB; font-size: 0.95rem;">Manutenção da média orçamentária estipulada e expansão dos projetos missionários locais.</p>
+                <h4 style="color: #D97706; margin-top: 20px; font-weight: 700;">🎯 Alvos e Próximos Passos</h4>
+                <p style="color: #475569; font-size: 0.95rem; line-height: 1.5;">Manutenção da média orçamentária estipulada e expansão dos projetos missionários locais.</p>
             </div>
             """, unsafe_allow_html=True)
 
