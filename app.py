@@ -756,7 +756,8 @@ elif page == "Visão Consolidada":
 # ==========================================
 # ==========================================
 # ==========================================
-# TESOURARIA (COM ORDENAÇÃO E EDIÇÃO DO DIA FIXO NA ABA 4)
+# ==========================================
+# TESOURARIA (COM FORMATO DD.MM.YYYY NOS CAMPOS DE DATA DA ABA 4)
 # ==========================================
 elif page == "Tesouraria":
     st.title("Tesouraria")
@@ -775,7 +776,7 @@ elif page == "Tesouraria":
                 col_r1, col_r2, col_r3 = st.columns(3)
                 valor = col_r1.number_input("Valor Base (R$)", min_value=0.0, step=50.0, format="%.2f", key="rec_valor")
                 dia_vencimento = col_r2.number_input("Dia Fixo de Vencimento", min_value=1, max_value=31, value=10, step=1, key="rec_dia")
-                data_fim_rec = col_r3.date_input("Data Final da Recorrência", date.today() + pd.DateOffset(months=12), key="rec_fim")
+                data_fim_rec = col_r3.date_input("Data Final da Recorrência", date.today() + pd.DateOffset(months=12), format="DD.MM.YYYY", key="rec_fim")
                 
                 cats_filtradas = [c for c in categorias_db if c.get("tipo") == tipo_lanc]
                 opcoes_cats = {c["nome"]: c["id"] for c in cats_filtradas}
@@ -807,9 +808,9 @@ elif page == "Tesouraria":
                     
                     status_lanc = col3.selectbox("Situação", ["Concluído", "Pendente"], key="unico_status")
                     label_data = "Data de Pagamento" if status_lanc == "Concluído" else "Data de Vencimento"
-                    data_venc = st.date_input(label_data, date.today(), key="unico_venc")
+                    data_venc = st.date_input(label_data, date.today(), format="DD.MM.YYYY", key="unico_venc")
                 else:
-                    data_comp = col2.date_input("Data de Recebimento", date.today(), key="unico_data_ent")
+                    data_comp = col2.date_input("Data de Recebimento", date.today(), format="DD.MM.YYYY", key="unico_data_ent")
                     status_lanc = col3.selectbox("Situação", ["Concluído", "Pendente"], key="unico_status_ent")
                     data_venc = data_comp
 
@@ -902,8 +903,8 @@ elif page == "Tesouraria":
             start_date = date.today().replace(day=1)
             end_date = (pd.Timestamp.today() + pd.offsets.MonthEnd(1)).date()
             
-            data_inicio = col_f1.date_input("De", start_date, key="hist_dt_ini")
-            data_fim = col_f2.date_input("Até", end_date, key="hist_dt_fim")
+            data_inicio = col_f1.date_input("De", start_date, format="DD.MM.YYYY", key="hist_dt_ini")
+            data_fim = col_f2.date_input("Até", end_date, format="DD.MM.YYYY", key="hist_dt_fim")
             filtro_tipo = col_f3.multiselect("Tipo", ["Entrada", "Saída"], default=["Entrada", "Saída"], key="hist_ft_tipo")
             filtro_status = col_f4.multiselect("Situação", df['status'].unique().tolist(), default=df['status'].unique().tolist(), key="hist_ft_status")
             
@@ -958,7 +959,6 @@ elif page == "Tesouraria":
             if 'categoria_nome' not in recorrencias_ativas.columns:
                 recorrencias_ativas['categoria_nome'] = recorrencias_ativas['categoria_id'].astype(str).map(map_cat)
 
-            # Ordenação solicitada: Saídas em cima (0), Entradas embaixo (1). Segundo sort: Data Até (mais próxima/ascendente primeiro)
             recorrencias_ativas['ordem_tipo'] = recorrencias_ativas['tipo'].map({'Saída': 0, 'Entrada': 1})
             recorrencias_ativas['dt_fim_sort'] = pd.to_datetime(recorrencias_ativas['data_fim_recorrencia'], errors='coerce')
             recorrencias_ativas = recorrencias_ativas.sort_values(by=['ordem_tipo', 'dt_fim_sort'], ascending=[True, True])
@@ -1023,8 +1023,9 @@ elif page == "Tesouraria":
                             e_cat = st.selectbox("Categoria", list(opcoes_cats_r.keys()) if opcoes_cats_r else ["-"], index=idx_c, key=f"ed_rec_cat_{rec_id}")
                             
                             col_d1, col_d2 = st.columns(2)
-                            e_dt_ini = col_d1.date_input("Data Inicial (De)", pd.to_datetime(rec_row['data_competencia']).date() if pd.notna(rec_row.get('data_competencia')) else date.today(), key=f"ed_rec_de_{rec_id}")
-                            e_dt_fim = col_d2.date_input("Data Final (Até)", pd.to_datetime(rec_row['data_fim_recorrencia']).date() if pd.notna(rec_row.get('data_fim_recorrencia')) else date.today() + pd.DateOffset(months=12), key=f"ed_rec_ate_{rec_id}")
+                            # Datas formatadas estritamente em DD.MM.YYYY
+                            e_dt_ini = col_d1.date_input("Data Inicial (De)", pd.to_datetime(rec_row['data_competencia']).date() if pd.notna(rec_row.get('data_competencia')) else date.today(), format="DD.MM.YYYY", key=f"ed_rec_de_{rec_id}")
+                            e_dt_fim = col_d2.date_input("Data Final (Até)", pd.to_datetime(rec_row['data_fim_recorrencia']).date() if pd.notna(rec_row.get('data_fim_recorrencia')) else date.today() + pd.DateOffset(months=12), format="DD.MM.YYYY", key=f"ed_rec_ate_{rec_id}")
                             
                             col_s1, col_s2 = st.columns(2)
                             if col_s1.form_submit_button("💾 Salvar Alterações", use_container_width=True, type="primary"):
