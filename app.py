@@ -490,7 +490,7 @@ if page == "Resumo do Dia":
             (df['data_fim_recorrencia'].dt.year == ano_atual_num)
         ]
 
-    pagamentos_pendentes = [p for p in pagamentos_resumo if p.get("status"] == "Pendente"]
+    pagamentos_pendentes = [p for p in pagamentos_resumo if p.get("status") == "Pendente"]
     inscricoes_por_id = {str(i.get("id")): i for i in inscricoes_resumo}
     eventos_por_id = {str(e.get("id")): e for e in eventos_resumo}
 
