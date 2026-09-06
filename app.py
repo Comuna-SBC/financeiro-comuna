@@ -753,11 +753,7 @@ elif page == "Visão Consolidada":
             )
 # ==========================================
 # ==========================================
-# ==========================================
-# ==========================================
-# ==========================================
-# ==========================================
-# TESOURARIA (COM FORMATO DD.MM.YYYY NOS CAMPOS DE DATA DA ABA 4)
+# TESOURARIA (COM SEPARAÇÃO DE PAGAR E RECEBER NA ABA 2)
 # ==========================================
 elif page == "Tesouraria":
     st.title("Tesouraria")
@@ -875,23 +871,53 @@ elif page == "Tesouraria":
     with tab2:
         df = carregar_lancamentos_df()
         pend = df[(df['status'] == 'Pendente') & (df['recorrente'] != True)].copy() if not df.empty else pd.DataFrame()
+        
         if pend.empty:
             st.info("Nenhuma conta pendente no momento. 🎉")
         else:
-            pend = pend.sort_values('data_vencimento')
             hoje = pd.Timestamp(date.today())
-            for _, row in pend.iterrows():
-                venc = row['data_vencimento']
-                situacao = "🔴 Atrasado" if pd.notna(venc) and venc < hoje else ("🟡 Vence hoje" if venc == hoje else "🟢 A vencer")
-                c1, c2, c3, c4, c5 = st.columns([3, 1.4, 1.4, 1.4, 1.2])
-                c1.write(f"**{row['descricao']}** — {row['categoria_nome']}")
-                c2.write(fmt_moeda(row['valor']))
-                c3.write(venc.strftime('%d.%m.%Y') if pd.notna(venc) else '—')
-                c4.write(situacao)
-                if c5.button("✅ Pagar", key=f"pagar_tab_{row['id']}"):
-                    res = sb_request("lancamentos", "PATCH", {"status": "Concluído", "data_pagamento": str(date.today())}, filtros={"id": f"eq.{row['id']}"})
-                    if res is not None:
-                        st.cache_data.clear(); st.rerun()
+            
+            # Separação correta entre Saídas (Pagar) e Entradas (Receber)
+            pend_pagar = pend[pend['tipo'] == 'Saída'].sort_values('data_vencimento') if 'tipo' in pend.columns else pd.DataFrame()
+            pend_receber = pend[pend['tipo'] == 'Entrada'].sort_values('data_vencimento') if 'tipo' in pend.columns else pd.DataFrame()
+
+            # Bloco Superior: Contas a Pagar
+            st.subheader("💳 Contas a Pagar")
+            if pend_pagar.empty:
+                st.success("Nenhuma conta a pagar pendente. 👍")
+            else:
+                for _, row in pend_pagar.iterrows():
+                    venc = row['data_vencimento']
+                    situacao = "🔴 Atrasado" if pd.notna(venc) and venc < hoje else ("🟡 Vence hoje" if venc == hoje else "🟢 A vencer")
+                    c1, c2, c3, c4, c5 = st.columns([3, 1.4, 1.4, 1.4, 1.2])
+                    c1.write(f"**{row['descricao']}** — {row['categoria_nome']}")
+                    c2.write(fmt_moeda(row['valor']))
+                    c3.write(venc.strftime('%d.%m.%Y') if pd.notna(venc) else '—')
+                    c4.write(situacao)
+                    if c5.button("✅ Pagar", key=f"pagar_tab_{row['id']}"):
+                        res = sb_request("lancamentos", "PATCH", {"status": "Concluído", "data_pagamento": str(date.today())}, filtros={"id": f"eq.{row['id']}"})
+                        if res is not None:
+                            st.cache_data.clear(); st.rerun()
+
+            st.markdown("---")
+
+            # Bloco Inferior: Contas a Receber
+            st.subheader("💰 Contas a Receber")
+            if pend_receber.empty:
+                st.success("Nenhuma conta a receber pendente. 👍")
+            else:
+                for _, row in pend_receber.iterrows():
+                    venc = row['data_vencimento']
+                    situacao = "🔴 Atrasado" if pd.notna(venc) and venc < hoje else ("🟡 Vence hoje" if venc == hoje else "🟢 A vencer")
+                    c1, c2, c3, c4, c5 = st.columns([3, 1.4, 1.4, 1.4, 1.2])
+                    c1.write(f"**{row['descricao']}** — {row['categoria_nome']}")
+                    c2.write(fmt_moeda(row['valor']))
+                    c3.write(venc.strftime('%d.%m.%Y') if pd.notna(venc) else '—')
+                    c4.write(situacao)
+                    if c5.button("✅ Receber", key=f"receber_tab_{row['id']}"):
+                        res = sb_request("lancamentos", "PATCH", {"status": "Concluído", "data_pagamento": str(date.today())}, filtros={"id": f"eq.{row['id']}"})
+                        if res is not None:
+                            st.cache_data.clear(); st.rerun()
 
     with tab3:
         df = carregar_lancamentos_df()
@@ -1015,7 +1041,7 @@ elif page == "Tesouraria":
                             e_valor = c_val_dia[0].number_input("Valor Base (R$)", value=float(rec_row['valor'] or 0), format="%.2f", key=f"ed_rec_val_{rec_id}")
                             e_dia = c_val_dia[1].number_input("Dia Fixo de Vencimento", min_value=1, max_value=31, value=int(rec_row.get('dia_vencimento_fixo') or 10), step=1, key=f"ed_rec_dia_{rec_id}")
                             
-                            cats_r_edit = [c for c in categorias_db if c.get("tipo") == e_tipo]
+                            cats_r_edit = [c for c in categorias_db if c.get("tipo"] == e_tipo]
                             opcoes_cats_r = {c["nome"]: c["id"] for c in cats_r_edit}
                             atual_cat_nome = rec_row.get('categoria_nome')
                             idx_c = list(opcoes_cats_r.keys()).index(atual_cat_nome) if atual_cat_nome in opcoes_cats_r else 0
@@ -1023,7 +1049,6 @@ elif page == "Tesouraria":
                             e_cat = st.selectbox("Categoria", list(opcoes_cats_r.keys()) if opcoes_cats_r else ["-"], index=idx_c, key=f"ed_rec_cat_{rec_id}")
                             
                             col_d1, col_d2 = st.columns(2)
-                            # Datas formatadas estritamente em DD.MM.YYYY
                             e_dt_ini = col_d1.date_input("Data Inicial (De)", pd.to_datetime(rec_row['data_competencia']).date() if pd.notna(rec_row.get('data_competencia')) else date.today(), format="DD.MM.YYYY", key=f"ed_rec_de_{rec_id}")
                             e_dt_fim = col_d2.date_input("Data Final (Até)", pd.to_datetime(rec_row['data_fim_recorrencia']).date() if pd.notna(rec_row.get('data_fim_recorrencia')) else date.today() + pd.DateOffset(months=12), format="DD.MM.YYYY", key=f"ed_rec_ate_{rec_id}")
                             
