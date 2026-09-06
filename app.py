@@ -803,7 +803,7 @@ elif page == "Tesouraria":
                     # Mês e Ano de Competência para Saídas (Formato MM.YYYY)
                     st.caption("📅 Mês de Competência Contábil (Referência MM.YYYY)")
                     cc_m, cc_a = col2.columns(2)
-                    mes_comp_sel = cc_m.selectbox("Mês", MESES_PT, index=date.today().month-1, key="unico_mes_comp")
+                    mes_comp_sel = cc_m.selectbox("Mêssss", MESES_PT, index=date.today().month-1, key="unico_mes_comp")
                     ano_comp_sel = cc_a.number_input("Ano", min_value=2020, max_value=2100, value=date.today().year, step=1, key="unico_ano_comp")
                     
                     idx_mes = MESES_PT.index(mes_comp_sel) + 1
