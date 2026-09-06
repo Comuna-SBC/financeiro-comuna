@@ -61,16 +61,32 @@ def carregar_categorias():
 
 categorias_db = carregar_categorias()
 
+@st.cache_data(ttl=600)
 def carregar_lancamentos():
-    res = supabase.table("lancamentos").select("*, categorias(nome)").execute()
-    if not res.data:
+    try:
+        # Puxa os lançamentos e as categorias separadamente para evitar erro de join na API
+        res_lanc = supabase.table("lancamentos").select("*").execute()
+        res_cat = supabase.table("categorias").select("*").execute()
+        
+        if not res_lanc.data:
+            return pd.DataFrame()
+            
+        df = pd.DataFrame(res_lanc.data)
+        df['valor'] = pd.to_numeric(df['valor'])
+        df['data_competencia'] = pd.to_datetime(df['data_competencia'])
+        df['mes_ano'] = df['data_competencia'].dt.strftime('%Y-%m')
+        
+        # Mapeia o nome da categoria pelo ID de forma segura no próprio Python
+        if res_cat.data:
+            map_cat = {c['id']: c['nome'] for c in res_cat.data}
+            df['categoria_nome'] = df['categoria_id'].map(map_cat).fillna('Sem Categoria')
+        else:
+            df['categoria_nome'] = 'Sem Categoria'
+            
+        return df
+    except Exception as e:
+        st.error(f"Erro ao carregar lançamentos: {e}")
         return pd.DataFrame()
-    df = pd.DataFrame(res.data)
-    df['valor'] = pd.to_numeric(df['valor'])
-    df['data_competencia'] = pd.to_datetime(df['data_competencia'])
-    df['mes_ano'] = df['data_competencia'].dt.strftime('%Y-%m')
-    df['categoria_nome'] = df['categorias'].apply(lambda x: x['nome'] if isinstance(x, dict) else 'Sem Categoria')
-    return df
 
 # ==========================================
 # 3. MOTOR DE COMPRESSÃO DE IMAGENS
