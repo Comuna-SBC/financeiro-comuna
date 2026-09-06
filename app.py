@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 import requests
 
 # ==========================================
-# CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM (CLARO / FINTECH)
+# CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM
 # ==========================================
 st.set_page_config(
     page_title="Gestão Financeira Igreja", 
@@ -28,11 +28,8 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     html, body, [class*="css"] { font-family: 'Plus Jakarta Sans', sans-serif; }
-
     .main { background-color: #F8FAFC; color: #1E293B; padding: 2rem; }
-
     [data-testid="stSidebar"] { background-color: #FFFFFF; border-right: 1px solid #E2E8F0; }
-
     [data-testid="stSidebar"] .stButton button {
         width: 100%; text-align: left; justify-content: flex-start;
         border-radius: 10px; padding: 0.65rem 1rem; font-weight: 500;
@@ -48,19 +45,16 @@ st.markdown("""
         background-color: #EFF6FF !important; color: #2563EB !important;
         border: 1px solid #BFDBFE !important; box-shadow: none !important; font-weight: 700 !important;
     }
-
     div[data-testid="stMetric"] {
         background: #FFFFFF; border: 1px solid #E2E8F0; padding: 20px; border-radius: 14px;
         box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);
     }
     div[data-testid="stMetricValue"] { color: #059669; font-size: 1.8rem !important; font-weight: 700; }
     div[data-testid="stMetricLabel"] { color: #64748B !important; font-size: 0.85rem !important; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
-
     div[data-testid="stForm"], div[data-testid="stExpander"] {
         background-color: #FFFFFF; padding: 25px; border-radius: 16px;
         border: 1px solid #E2E8F0; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.03);
     }
-
     .stTextInput input, .stNumberInput input, .stSelectbox select, .stDateInput input, textarea {
         background-color: #F8FAFC !important; color: #0F172A !important;
         border: 1px solid #CBD5E1 !important; border-radius: 10px !important; padding: 10px 14px !important;
@@ -69,7 +63,6 @@ st.markdown("""
         border-color: #2563EB !important; background-color: #FFFFFF !important;
         box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
     }
-
     .main .stButton button, div[data-testid="stFormSubmitButton"] button {
         background-color: #2563EB !important; color: white !important; font-weight: 600 !important;
         padding: 0.8rem 1.4rem !important; border-radius: 10px !important; border: none !important;
@@ -78,13 +71,12 @@ st.markdown("""
     .main .stButton button:hover, div[data-testid="stFormSubmitButton"] button:hover {
         background-color: #1D4ED8 !important;
     }
-
     h1, h2, h3, h4 { color: #0F172A !important; font-weight: 700 !important; }
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# CONEXÃO COM SUPABASE
+# CONEXÃO COM SUPABASE & HELPER DE EXPORTAÇÃO
 # ==========================================
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
@@ -96,6 +88,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def sb_request(tabela, metodo="GET", payload=None, filtros=None):
+    """Realiza a requisição e IMPRIME O ERRO se falhar."""
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -104,26 +97,40 @@ def sb_request(tabela, metodo="GET", payload=None, filtros=None):
     }
     url = f"{SUPABASE_URL}/rest/v1/{tabela}"
     try:
+        res = None
         if metodo == "GET":
             res = requests.get(url, headers=headers, params=filtros or {})
-            return res.json() if res.status_code == 200 else []
         elif metodo == "POST":
             res = requests.post(url, headers=headers, json=payload)
-            return res.json() if res.status_code in (200, 201) else None
         elif metodo == "PATCH":
             res = requests.patch(url, headers=headers, params=filtros or {}, json=payload)
-            return res.json() if res.status_code in (200, 201, 204) else None
         elif metodo == "DELETE":
             res = requests.delete(url, headers=headers, params=filtros or {})
-            return res.status_code in (200, 204)
+
+        if res is not None and not res.ok:
+            st.error(f"❌ Erro Supabase ({metodo} {tabela}): Status {res.status_code} - {res.text}")
+            return [] if metodo == "GET" else None
+
+        if metodo == "DELETE":
+            return True
+        return res.json() if res.content else []
     except Exception as e:
+        st.error(f"❌ Falha de Conexão Supabase: {e}")
         return [] if metodo == "GET" else None
 
-@st.cache_data(ttl=30)
+def to_excel_bytes(dfs_dict):
+    """Recebe um dicionário de {NomeDaAba: DataFrame} e retorna bytes de um arquivo Excel"""
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        for sheet_name, df_data in dfs_dict.items():
+            df_data.to_excel(writer, sheet_name=sheet_name)
+    return output.getvalue()
+
+@st.cache_data(ttl=15)
 def carregar(tabela):
     return sb_request(tabela, "GET") or []
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=15)
 def carregar_categorias():
     data = sb_request("categorias", "GET") or []
     nomes_existentes = {c['nome'] for c in data}
@@ -140,6 +147,7 @@ def carregar_categorias():
     faltantes = [p for p in padroes if p["nome"] not in nomes_existentes]
     if faltantes:
         sb_request("categorias", "POST", faltantes)
+        st.cache_data.clear()
         data = sb_request("categorias", "GET") or []
     return data
 
@@ -148,6 +156,12 @@ def carregar_lancamentos_df():
     if not lanc:
         return pd.DataFrame()
     df = pd.DataFrame(lanc)
+    
+    # Prevenção caso a tabela exista mas esteja vazia e falte colunas
+    for col in ['valor', 'data_competencia', 'status', 'categoria_id', 'conta_bancaria_id', 'centro_custo', 'descricao', 'tipo']:
+        if col not in df.columns:
+            df[col] = None
+            
     df['valor'] = pd.to_numeric(df['valor'], errors='coerce').fillna(0.0)
     df['data_competencia'] = pd.to_datetime(df['data_competencia'], errors='coerce')
     df['data_vencimento'] = pd.to_datetime(df.get('data_vencimento'), errors='coerce') if 'data_vencimento' in df.columns else pd.NaT
@@ -326,13 +340,13 @@ def pagina_inscricao_publica():
                         "valor_pago": 0,
                         "status_pagamento": "Pendente"
                     })
-                    st.cache_data.clear()
-                    if nova:
+                    if nova is not None:
+                        st.cache_data.clear()
                         st.success("✅ Inscrição criada! Agora envie o comprovante do pagamento abaixo.")
                         st.session_state["cpf_busca"] = cpf_limpo
                         st.rerun()
                     else:
-                        st.error("Não foi possível criar a inscrição. Se você já tem uma, informe o CPF acima.")
+                        st.error("Não foi possível criar a inscrição. Verifique as mensagens de erro acima.")
 
 def _painel_pagamentos_participante(inscricao, evento):
     valor_total = float(inscricao.get("valor_total") or 0)
@@ -375,16 +389,17 @@ def _painel_pagamentos_participante(inscricao, evento):
                 st.warning("Anexe o comprovante.")
             else:
                 url_comp = comprimir_e_fazer_upload(comprovante, pasta="eventos")
-                sb_request("inscricao_pagamentos", "POST", {
+                sucesso = sb_request("inscricao_pagamentos", "POST", {
                     "inscricao_id": inscricao["id"],
                     "numero_parcela": proxima_parcela,
                     "valor": float(valor_parcela),
                     "comprovante_url": url_comp,
                     "status": "Pendente"
                 })
-                st.cache_data.clear()
-                st.success("✅ Comprovante enviado! A tesouraria irá validar em breve.")
-                st.rerun()
+                if sucesso is not None:
+                    st.cache_data.clear()
+                    st.success("✅ Comprovante enviado! A tesouraria irá validar em breve.")
+                    st.rerun()
 
 qp = st.query_params
 if qp.get("pagina") == "inscricao":
@@ -411,7 +426,7 @@ def nav_button(label, icon):
         st.session_state.page = label
         st.rerun()
 
-st.sidebar.markdown("<h2 style='color:#0F172A;font-weight:800;padding-top:6px;'>⛪ Gestão Financeira Igreja </h2>", unsafe_allow_html=True)
+st.sidebar.markdown("<h2 style='color:#0F172A;font-weight:800;padding-top:6px;'>⛪ Gestão Financeira </h2>", unsafe_allow_html=True)
 
 secao("OPERACIONAL")
 nav_button("Resumo do Dia", "🏠")
@@ -432,7 +447,7 @@ nav_button("Analytics Financeiro", "📊")
 nav_button("Exportar Contabilidade", "📤")
 
 st.sidebar.markdown("---")
-st.sidebar.caption("Gestão Financeira • v4.3")
+st.sidebar.caption("Gestão Financeira • Final")
 
 page = st.session_state.page
 
@@ -506,8 +521,6 @@ if page == "Resumo do Dia":
                         if resultado is not None:
                             st.cache_data.clear()
                             st.rerun()
-                        else:
-                            st.error("Não foi possível atualizar a conta.")
                 st.markdown("<hr style='margin:6px 0;border:none;border-top:1px solid #E2E8F0;'>", unsafe_allow_html=True)
 
     with coluna_comprovantes:
@@ -529,11 +542,11 @@ if page == "Resumo do Dia":
                 st.rerun()
 
 # ==========================================
-# VISÃO EXCEL (CONSOLIDADO)
+# VISÃO EXCEL (CONSOLIDADO) - NOVO COM EXPORTAÇÃO E DRILL-DOWN
 # ==========================================
 elif page == "Visão Excel (Consolidado)":
     st.title("📋 Visão Excel (Consolidado)")
-    st.markdown("Esta aba espelha o formato de planilhas tradicionais (Entradas, Saídas e Consolidado Mensal), calculada em tempo real com base em todos os lançamentos do sistema.")
+    st.markdown("Acompanhe o balanço mensal de Entradas e Saídas consolidado por categoria.")
 
     df = carregar_lancamentos_df()
     ano_atual = date.today().year
@@ -550,22 +563,17 @@ elif page == "Visão Excel (Consolidado)":
 
     tab_ex1, tab_ex2, tab_ex3 = st.tabs(["📥 Entradas por Categoria", "📤 Saídas por Categoria", "📊 Consolidado Bancário e Geral"])
 
+    # Estruturas para exportação
+    pivot_ent = pd.DataFrame()
+    pivot_sai = pd.DataFrame()
+    resumo_geral = pd.DataFrame(index=MESES_PT)
+
     with tab_ex1:
-        st.subheader(f"Entradas — Ano {ano_sel}")
         cats_entrada = [c['nome'] for c in categorias_db if c['tipo'] == 'Entrada']
         
         if not df_ano.empty:
             df_ent = df_ano[(df_ano['tipo'] == 'Entrada') & (df_ano['status'] == 'Concluído')]
-            pivot_ent = pd.pivot_table(
-                df_ent,
-                values='valor',
-                index='categoria_nome',
-                columns='mes_num',
-                aggfunc='sum',
-                fill_value=0.0
-            )
-        else:
-            pivot_ent = pd.DataFrame()
+            pivot_ent = pd.pivot_table(df_ent, values='valor', index='categoria_nome', columns='mes_num', aggfunc='sum', fill_value=0.0)
 
         for cat in cats_entrada:
             if cat not in pivot_ent.index:
@@ -581,21 +589,11 @@ elif page == "Visão Excel (Consolidado)":
         st.dataframe(safe_map_moeda(pivot_ent), use_container_width=True)
 
     with tab_ex2:
-        st.subheader(f"Saídas — Ano {ano_sel}")
         cats_saida = [c['nome'] for c in categorias_db if c['tipo'] == 'Saída']
         
         if not df_ano.empty:
             df_sai = df_ano[(df_ano['tipo'] == 'Saída') & (df_ano['status'] == 'Concluído')]
-            pivot_sai = pd.pivot_table(
-                df_sai,
-                values='valor',
-                index='categoria_nome',
-                columns='mes_num',
-                aggfunc='sum',
-                fill_value=0.0
-            )
-        else:
-            pivot_sai = pd.DataFrame()
+            pivot_sai = pd.pivot_table(df_sai, values='valor', index='categoria_nome', columns='mes_num', aggfunc='sum', fill_value=0.0)
 
         for cat in cats_saida:
             if cat not in pivot_sai.index:
@@ -611,9 +609,6 @@ elif page == "Visão Excel (Consolidado)":
         st.dataframe(safe_map_moeda(pivot_sai), use_container_width=True)
 
     with tab_ex3:
-        st.subheader(f"Consolidado Geral — Ano {ano_sel}")
-        
-        resumo_geral = pd.DataFrame(index=MESES_PT)
         tot_ent = []
         tot_sai = []
         
@@ -636,14 +631,63 @@ elif page == "Visão Excel (Consolidado)":
 
         st.dataframe(safe_map_moeda(resumo_geral), use_container_width=True)
 
-        st.markdown("#### Saldo Inicial por Conta Bancária")
-        if contas_bancarias_db:
-            df_contas_view = pd.DataFrame(contas_bancarias_db)[['nome', 'tipo', 'saldo_inicial']]
-            df_contas_view.columns = ['Conta Bancária', 'Tipo', 'Saldo Inicial (R$)']
-            df_contas_view['Saldo Inicial (R$)'] = df_contas_view['Saldo Inicial (R$)'].apply(fmt_moeda)
-            st.dataframe(df_contas_view, use_container_width=True, hide_index=True)
+    # 1. BOTÃO DE EXPORTAÇÃO GLOBAL
+    st.markdown("---")
+    st.markdown("### 📥 Exportar Consolidado")
+    
+    if not df_ano.empty:
+        dfs_export = {
+            "Entradas": pivot_ent,
+            "Saídas": pivot_sai,
+            "Resumo Geral": resumo_geral
+        }
+        excel_completo = to_excel_bytes(dfs_export)
+        st.download_button(
+            label="💾 Baixar Visão Completa (Excel)",
+            data=excel_completo,
+            file_name=f"Consolidado_{ano_sel}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+
+    # 2. SEÇÃO DE DETALHAMENTO (DRILL-DOWN)
+    st.markdown("---")
+    st.markdown("### 🔍 Detalhar Valores por Mês e Categoria (Drill-down)")
+    st.markdown("Selecione os filtros abaixo para ver detalhadamente quais itens compõem a soma vista nas matrizes acima e exporte esta lista específica.")
+
+    col_d1, col_d2, col_d3 = st.columns(3)
+    mes_drill = col_d1.selectbox("Selecione o Mês", ["Todos"] + MESES_PT)
+    tipo_drill = col_d2.selectbox("Selecione o Tipo", ["Todos", "Entrada", "Saída"])
+    
+    opcoes_cat_drill = ["Todas"] + [c['nome'] for c in categorias_db]
+    cat_drill = col_d3.selectbox("Selecione a Categoria", opcoes_cat_drill)
+
+    if not df_ano.empty:
+        df_detalhe = df_ano[df_ano['status'] == 'Concluído'].copy()
+        
+        if mes_drill != "Todos":
+            df_detalhe = df_detalhe[df_detalhe['mes_num'] == (MESES_PT.index(mes_drill) + 1)]
+        if tipo_drill != "Todos":
+            df_detalhe = df_detalhe[df_detalhe['tipo'] == tipo_drill]
+        if cat_drill != "Todas":
+            df_detalhe = df_detalhe[df_detalhe['categoria_nome'] == cat_drill]
+
+        if df_detalhe.empty:
+            st.info("Não há transações concluídas para os filtros informados.")
         else:
-            st.info("Nenhuma conta bancária cadastrada.")
+            exibir_detalhe = df_detalhe[['data_competencia', 'tipo', 'descricao', 'categoria_nome', 'valor', 'conta_nome']].copy()
+            exibir_detalhe['data_competencia'] = exibir_detalhe['data_competencia'].dt.strftime('%d/%m/%Y')
+            exibir_detalhe.columns = ['Data', 'Tipo', 'Descrição', 'Categoria', 'Valor', 'Conta']
+            
+            st.dataframe(exibir_detalhe.assign(Valor=exibir_detalhe['Valor'].apply(fmt_moeda)), use_container_width=True, hide_index=True)
+            
+            excel_detalhe = to_excel_bytes({"Detalhes": exibir_detalhe})
+            st.download_button(
+                label=f"💾 Baixar Detalhes Selecionados (Excel)",
+                data=excel_detalhe,
+                file_name=f"Detalhes_{ano_sel}_{mes_drill}_{cat_drill}.xlsx".replace(" ", "_"),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
 # ==========================================
 # TESOURARIA
@@ -700,20 +744,22 @@ elif page == "Tesouraria":
                             "url_anexo": url_anexo,
                             "recorrente": recorrente
                         }
-                        sb_request("lancamentos", "POST", dados_base)
-                        if recorrente and repeticoes > 1:
-                            for i in range(1, int(repeticoes)):
-                                nova_data = (pd.Timestamp(data_comp) + pd.DateOffset(months=i)).date()
-                                dados_rep = dict(dados_base)
-                                dados_rep["data_competencia"] = str(nova_data)
-                                dados_rep["data_vencimento"] = str(nova_data)
-                                dados_rep["status"] = "Pendente"
-                                dados_rep["url_anexo"] = None
-                                sb_request("lancamentos", "POST", dados_rep)
-                        st.cache_data.clear()
-                        st.success("✅ Lançamento registrado com sucesso!")
-                        time.sleep(1)
-                        st.rerun()
+                        res = sb_request("lancamentos", "POST", dados_base)
+                        
+                        if res is not None:
+                            if recorrente and repeticoes > 1:
+                                for i in range(1, int(repeticoes)):
+                                    nova_data = (pd.Timestamp(data_comp) + pd.DateOffset(months=i)).date()
+                                    dados_rep = dict(dados_base)
+                                    dados_rep["data_competencia"] = str(nova_data)
+                                    dados_rep["data_vencimento"] = str(nova_data)
+                                    dados_rep["status"] = "Pendente"
+                                    dados_rep["url_anexo"] = None
+                                    sb_request("lancamentos", "POST", dados_rep)
+                            st.cache_data.clear()
+                            st.success("✅ Lançamento registrado com sucesso!")
+                            time.sleep(1)
+                            st.rerun()
 
     with tab2:
         df = carregar_lancamentos_df()
@@ -739,9 +785,10 @@ elif page == "Tesouraria":
                 c3.write(venc.strftime('%d/%m/%Y') if pd.notna(venc) else '—')
                 c4.write(situacao)
                 if c5.button("✅ Pagar", key=f"pagar_tab_{row['id']}"):
-                    sb_request("lancamentos", "PATCH", {"status": "Concluído", "data_pagamento": str(date.today())}, filtros={"id": f"eq.{row['id']}"})
-                    st.cache_data.clear()
-                    st.rerun()
+                    res = sb_request("lancamentos", "PATCH", {"status": "Concluído", "data_pagamento": str(date.today())}, filtros={"id": f"eq.{row['id']}"})
+                    if res is not None:
+                        st.cache_data.clear()
+                        st.rerun()
 
     with tab3:
         df = carregar_lancamentos_df()
@@ -772,10 +819,11 @@ elif page == "Conciliação Bancária":
             saldo_inicial = cc3.number_input("Saldo Inicial (R$)", min_value=0.0, format="%.2f")
             if st.form_submit_button("Cadastrar Conta"):
                 if nome_conta:
-                    sb_request("contas_bancarias", "POST", {"nome": nome_conta, "tipo": tipo_conta, "saldo_inicial": float(saldo_inicial)})
-                    st.cache_data.clear()
-                    st.success("Conta cadastrada!")
-                    st.rerun()
+                    res = sb_request("contas_bancarias", "POST", {"nome": nome_conta, "tipo": tipo_conta, "saldo_inicial": float(saldo_inicial)})
+                    if res is not None:
+                        st.cache_data.clear()
+                        st.success("Conta cadastrada!")
+                        st.rerun()
                 else:
                     st.warning("Informe o nome da conta.")
 
@@ -819,8 +867,9 @@ elif page == "Conciliação Bancária":
                 marcado = bool(row.get('conciliado'))
                 novo_valor = c4.checkbox("Conciliado", value=marcado, key=f"conc_{row['id']}")
                 if novo_valor != marcado:
-                    sb_request("lancamentos", "PATCH", {"conciliado": novo_valor}, filtros={"id": f"eq.{row['id']}"})
-                    st.cache_data.clear()
+                    res = sb_request("lancamentos", "PATCH", {"conciliado": novo_valor}, filtros={"id": f"eq.{row['id']}"})
+                    if res is not None:
+                        st.cache_data.clear()
 
 # ==========================================
 # PAINEL DE EVENTOS
@@ -865,13 +914,11 @@ elif page == "Painel de Eventos":
                         "permite_parcelamento": bool(permite_parc),
                         "numero_parcelas": int(num_parc) if permite_parc else 1
                     })
-                    if resultado:
+                    if resultado is not None:
                         st.cache_data.clear()
                         st.success("Evento criado com sucesso!")
                         time.sleep(1)
                         st.rerun()
-                    else:
-                        st.error("Não foi possível criar o evento.")
 
     eventos_atualizados = carregar("eventos")
     st.markdown("---")
@@ -927,8 +974,6 @@ elif page == "Painel de Eventos":
                     if resultado is not None:
                         st.cache_data.clear()
                         st.rerun()
-                    else:
-                        st.error("Não foi possível alterar o status.")
             st.markdown("---")
 
 # ==========================================
@@ -973,19 +1018,21 @@ elif page == "Inscrições e Comprovantes":
                             "data_competencia": str(date.today()), "status": "Concluído",
                             "categoria_id": cat_evento_id, "centro_custo": evento_sel
                         })
-                        lanc_id = novo_lanc[0]['id'] if novo_lanc else None
-                        sb_request("inscricao_pagamentos", "PATCH", {"status": "Aprovado", "lancamento_id": lanc_id}, filtros={"id": f"eq.{p['id']}"})
+                        
+                        if novo_lanc is not None:
+                            lanc_id = novo_lanc[0]['id'] if isinstance(novo_lanc, list) and len(novo_lanc)>0 else None
+                            sb_request("inscricao_pagamentos", "PATCH", {"status": "Aprovado", "lancamento_id": lanc_id}, filtros={"id": f"eq.{p['id']}"})
+                            novo_valor_pago = float(insc.get('valor_pago') or 0) + float(p.get('valor') or 0)
+                            novo_status = "Completo" if novo_valor_pago >= float(insc.get('valor_total') or 0) - 0.01 else "Parcial"
+                            sb_request("inscricoes", "PATCH", {"valor_pago": novo_valor_pago, "status_pagamento": novo_status}, filtros={"id": f"eq.{insc['id']}"})
+                            st.cache_data.clear()
+                            st.rerun()
 
-                        novo_valor_pago = float(insc.get('valor_pago') or 0) + float(p.get('valor') or 0)
-                        novo_status = "Completo" if novo_valor_pago >= float(insc.get('valor_total') or 0) - 0.01 else "Parcial"
-                        sb_request("inscricoes", "PATCH", {"valor_pago": novo_valor_pago, "status_pagamento": novo_status}, filtros={"id": f"eq.{insc['id']}"})
-
-                        st.cache_data.clear()
-                        st.rerun()
                     if col_b.button("❌", key=f"rejeitar_pg_{p['id']}", help="Rejeitar"):
-                        sb_request("inscricao_pagamentos", "PATCH", {"status": "Rejeitado"}, filtros={"id": f"eq.{p['id']}"})
-                        st.cache_data.clear()
-                        st.rerun()
+                        res = sb_request("inscricao_pagamentos", "PATCH", {"status": "Rejeitado"}, filtros={"id": f"eq.{p['id']}"})
+                        if res is not None:
+                            st.cache_data.clear()
+                            st.rerun()
                     st.markdown("<hr style='margin:6px 0;border-color:#E2E8F0;'>", unsafe_allow_html=True)
         else:
             if not inscricoes_evento:
@@ -1065,10 +1112,11 @@ elif page == "Categorias":
             codigo_cat = c3.text_input("Código Contábil (opcional)")
             if st.form_submit_button("Cadastrar Categoria"):
                 if nome_cat:
-                    sb_request("categorias", "POST", {"nome": nome_cat, "tipo": tipo_cat, "codigo_contabil": codigo_cat or None})
-                    st.cache_data.clear()
-                    st.success("Categoria criada!")
-                    st.rerun()
+                    res = sb_request("categorias", "POST", {"nome": nome_cat, "tipo": tipo_cat, "codigo_contabil": codigo_cat or None})
+                    if res is not None:
+                        st.cache_data.clear()
+                        st.success("Categoria criada!")
+                        st.rerun()
                 else:
                     st.warning("Informe o nome da categoria.")
 
@@ -1206,8 +1254,6 @@ elif page == "Exportar Contabilidade":
             csv = exportar.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig')
             st.download_button("📥 Baixar CSV", csv, file_name=f"financeiro_{ano_exp}_{mes_exp}.csv", mime="text/csv", use_container_width=True)
         with col_d2:
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                exportar.to_excel(writer, index=False, sheet_name='Lançamentos')
-            st.download_button("📥 Baixar Excel", buffer.getvalue(), file_name=f"financeiro_{ano_exp}_{mes_exp}.xlsx",
+            excel_data = to_excel_bytes({"Lançamentos": exportar})
+            st.download_button("📥 Baixar Excel", excel_data, file_name=f"financeiro_{ano_exp}_{mes_exp}.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
