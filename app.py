@@ -753,7 +753,8 @@ elif page == "Visão Consolidada":
             )
 # ==========================================
 # ==========================================
-# TESOURARIA (COM SEPARAÇÃO DE PAGAR E RECEBER NA ABA 2)
+# ==========================================
+# TESOURARIA (CORREÇÃO DE SINTAXE NA ABA 4)
 # ==========================================
 elif page == "Tesouraria":
     st.title("Tesouraria")
@@ -877,11 +878,9 @@ elif page == "Tesouraria":
         else:
             hoje = pd.Timestamp(date.today())
             
-            # Separação correta entre Saídas (Pagar) e Entradas (Receber)
             pend_pagar = pend[pend['tipo'] == 'Saída'].sort_values('data_vencimento') if 'tipo' in pend.columns else pd.DataFrame()
             pend_receber = pend[pend['tipo'] == 'Entrada'].sort_values('data_vencimento') if 'tipo' in pend.columns else pd.DataFrame()
 
-            # Bloco Superior: Contas a Pagar
             st.subheader("💳 Contas a Pagar")
             if pend_pagar.empty:
                 st.success("Nenhuma conta a pagar pendente. 👍")
@@ -901,7 +900,6 @@ elif page == "Tesouraria":
 
             st.markdown("---")
 
-            # Bloco Inferior: Contas a Receber
             st.subheader("💰 Contas a Receber")
             if pend_receber.empty:
                 st.success("Nenhuma conta a receber pendente. 👍")
@@ -1041,7 +1039,8 @@ elif page == "Tesouraria":
                             e_valor = c_val_dia[0].number_input("Valor Base (R$)", value=float(rec_row['valor'] or 0), format="%.2f", key=f"ed_rec_val_{rec_id}")
                             e_dia = c_val_dia[1].number_input("Dia Fixo de Vencimento", min_value=1, max_value=31, value=int(rec_row.get('dia_vencimento_fixo') or 10), step=1, key=f"ed_rec_dia_{rec_id}")
                             
-                            cats_r_edit = [c for c in categorias_db if c.get("tipo"] == e_tipo]
+                            # Correção aplicada aqui (fechamento correto do colchete/parêntese)
+                            cats_r_edit = [c for c in categorias_db if c.get("tipo") == e_tipo]
                             opcoes_cats_r = {c["nome"]: c["id"] for c in cats_r_edit}
                             atual_cat_nome = rec_row.get('categoria_nome')
                             idx_c = list(opcoes_cats_r.keys()).index(atual_cat_nome) if atual_cat_nome in opcoes_cats_r else 0
