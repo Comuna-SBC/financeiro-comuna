@@ -753,6 +753,7 @@ elif page == "Visão Excel (Consolidado)":
             )
 # ==========================================
 # ==========================================
+# ==========================================
 # TESOURARIA (COM FILTRO DINÂMICO E RECORRÊNCIA POR DATA FINAL)
 # ==========================================
 elif page == "Tesouraria":
@@ -760,7 +761,6 @@ elif page == "Tesouraria":
     tab1, tab2, tab3 = st.tabs(["📝 Novo Lançamento", "⏳ Contas a Pagar/Receber", "📜 Histórico Completo"])
 
     with tab1:
-        # Usamos st.container com controles fora do form para alteração imediata de estado na tela sem dar enter
         tipo_lanc = st.radio("Tipo", ["Entrada", "Saída"], horizontal=True, key="input_tipo_lanc")
         
         with st.form("form_lancamento", clear_on_submit=True):
@@ -768,7 +768,6 @@ elif page == "Tesouraria":
             valor = col1.number_input("Valor (R$)", min_value=0.0, step=50.0, format="%.2f")
             data_comp = col2.date_input("Data de Competência", date.today())
 
-            # Filtro estrito de categorias com base no tipo selecionado fora do form
             cats_filtradas = [c for c in categorias_db if c.get("tipo") == tipo_lanc]
             opcoes_cats = {c["nome"]: c["id"] for c in cats_filtradas}
 
@@ -779,7 +778,6 @@ elif page == "Tesouraria":
             col6, col7 = st.columns(2)
             status_lanc = col6.selectbox("Situação", ["Concluído", "Pendente"])
             
-            # Aparece ou some dinamicamente dependendo da escolha da situação
             data_venc = None
             if status_lanc == "Pendente":
                 data_venc = col7.date_input("Data de Vencimento", data_comp)
@@ -819,10 +817,8 @@ elif page == "Tesouraria":
                             "data_fim_recorrencia": str(data_fim_rec) if recorrente and data_fim_rec else None
                         }
                         
-                        # Grava o lançamento principal
                         res = sb_request("lancamentos", "POST", dados_base)
                         
-                        # Se for recorrente, gera as repetições mensais até a data limite informada
                         if res is not None and recorrente and data_fim_rec:
                             proxima_data = pd.Timestamp(data_comp) + pd.DateOffset(months=1)
                             data_limite = pd.Timestamp(data_fim_rec)
@@ -831,7 +827,7 @@ elif page == "Tesouraria":
                                 dados_rep = dict(dados_base)
                                 dados_rep["data_competencia"] = str(proxima_data.date())
                                 dados_rep["data_vencimento"] = str(proxima_data.date()) if status_lanc == "Pendente" else None
-                                dados_rep["status"] = "Pendente"  # Futuros gerados entram como pendentes
+                                dados_rep["status"] = "Pendente"
                                 dados_rep["url_anexo"] = None
                                 sb_request("lancamentos", "POST", dados_rep)
                                 proxima_data += pd.DateOffset(months=1)
@@ -870,13 +866,12 @@ elif page == "Tesouraria":
                         st.cache_data.clear()
                         st.rerun()
 
-   with tab3:
+    with tab3:
         df = carregar_lancamentos_df()
         if df.empty:
             st.info("Nenhum lançamento registrado.")
         else:
             with st.expander("✏️ Editar ou Excluir Lançamento Existente", expanded=False):
-                # Cria uma string legível para buscar no Selectbox
                 opcoes_lanc = df.sort_values('data_competencia', ascending=False).apply(
                     lambda r: f"{r['id']} | {r['data_competencia'].strftime('%d/%m/%Y')} - {r['descricao']} (R$ {r['valor']})", axis=1
                 ).tolist()
@@ -885,7 +880,6 @@ elif page == "Tesouraria":
                 
                 if lanc_selecionado:
                     id_lanc = int(lanc_selecionado.split(" | ")[0])
-                    # Busca os dados crus direto da API para preencher o form
                     lanc_raw = next((l for l in carregar("lancamentos") if l['id'] == id_lanc), None)
                     
                     if lanc_raw:
@@ -896,7 +890,6 @@ elif page == "Tesouraria":
                             n_valor = el2.number_input("Valor (R$)", value=float(lanc_raw.get('valor') or 0), format="%.2f")
                             n_data_comp = el3.date_input("Data de Competência", pd.to_datetime(lanc_raw.get('data_competencia')).date())
                             
-                            # Categoria (Lista todas para não ter conflito de tipo)
                             opcoes_cats_edit = {f"{c['nome']} ({c['tipo']})": c['id'] for c in categorias_db}
                             nome_cat_atual = next((f"{c['nome']} ({c['tipo']})" for c in categorias_db if str(c['id']) == str(lanc_raw.get('categoria_id'))), None)
                             idx_cat = list(opcoes_cats_edit.keys()).index(nome_cat_atual) if nome_cat_atual in opcoes_cats_edit else 0
@@ -905,11 +898,9 @@ elif page == "Tesouraria":
                             n_cat = el4.selectbox("Categoria", list(opcoes_cats_edit.keys()), index=idx_cat)
                             n_status = el5.selectbox("Situação", ["Concluído", "Pendente"], index=0 if lanc_raw.get('status') == "Concluído" else 1)
                             
-                            # Vencimento
                             dt_venc = lanc_raw.get('data_vencimento')
                             n_venc = el6.date_input("Vencimento (Se Pendente)", pd.to_datetime(dt_venc).date() if pd.notna(dt_venc) and dt_venc else n_data_comp)
                             
-                            # Conta e Projeto
                             opcoes_contas = {"Nenhuma": None} | {c['nome']: c['id'] for c in contas_bancarias_db}
                             nome_conta_atual = next((c['nome'] for c in contas_bancarias_db if str(c['id']) == str(lanc_raw.get('conta_bancaria_id'))), "Nenhuma")
                             idx_conta = list(opcoes_contas.keys()).index(nome_conta_atual) if nome_conta_atual in opcoes_contas else 0
@@ -934,7 +925,6 @@ elif page == "Tesouraria":
                                     "conta_bancaria_id": opcoes_contas[n_conta],
                                     "centro_custo": None if n_proj == "Nenhum" else n_proj
                                 }
-                                # Atualiza o "tipo" baseado na categoria escolhida
                                 tipo_real = "Entrada" if "Entrada" in n_cat else "Saída"
                                 carga["tipo"] = tipo_real
                                 
@@ -955,9 +945,7 @@ elif page == "Tesouraria":
             exibir = dff[['data_competencia', 'tipo', 'descricao', 'categoria_nome', 'valor', 'status', 'centro_custo', 'conta_nome']].copy()
             exibir['data_competencia'] = exibir['data_competencia'].dt.strftime('%d/%m/%Y')
             exibir.columns = ['Data', 'Tipo', 'Descrição', 'Categoria', 'Valor (R$)', 'Situação', 'Projeto', 'Conta']
-            st.dataframe(exibir, use_container_width=True, hide_index=True)
-# ==========================================
-# ==========================================
+            st.dataframe(exibir, use_container_width=True, hide_index=True)# ==========================================
 # ==========================================
 # CONCILIAÇÃO BANCÁRIA (COM IMPORTAÇÃO INTELIGENTE DE OFX)
 # ==========================================
