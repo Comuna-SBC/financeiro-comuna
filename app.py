@@ -754,7 +754,8 @@ elif page == "Visão Excel (Consolidado)":
 # ==========================================
 # ==========================================
 # ==========================================
-# TESOURARIA (COM RECORRÊNCIA INTELIGENTE E COMPETÊNCIA MM.YYYY)
+# ==========================================
+# TESOURARIA (COM RECORRÊNCIA INTELIGENTE E EDIÇÃO NA ABA 4)
 # ==========================================
 elif page == "Tesouraria":
     st.title("Tesouraria")
@@ -789,24 +790,22 @@ elif page == "Tesouraria":
                 conta_sel = st.selectbox("Conta Bancária Principal", list(contas_opcoes.keys()), key="rec_conta")
                 tag = st.selectbox("Projeto / Evento", ["Nenhum"] + [e['nome'] for e in eventos_db], key="rec_tag")
                 
-                # Campos ocultos para manter compatibilidade no submit
                 data_comp = date.today()
                 status_lanc = "Pendente"
                 data_venc = date.today()
 
             else:
-                # Fluxo Normal (Lançamento Único)
                 col1, col2, col3 = st.columns(3)
                 valor = col1.number_input("Valor (R$)", min_value=0.0, step=50.0, format="%.2f", key="unico_valor")
                 
                 if tipo_lanc == "Saída":
-                    # Mês e Ano de Competência para Saídas (Formato MM.YYYY)                
+                    st.caption("📅 Mês de Competência Contábil (Referência MM.YYYY)")
                     cc_m, cc_a = col2.columns(2)
-                    mes_comp_sel = cc_m.selectbox("Mês Competência", MESES_PT, index=date.today().month-1, key="unico_mes_comp")
-                    ano_comp_sel = cc_a.number_input("Ano Competência", min_value=2020, max_value=2100, value=date.today().year, step=1, key="unico_ano_comp")
+                    mes_comp_sel = cc_m.selectbox("Mês", MESES_PT, index=date.today().month-1, key="unico_mes_comp")
+                    ano_comp_sel = cc_a.number_input("Ano", min_value=2020, max_value=2100, value=date.today().year, step=1, key="unico_ano_comp")
                     
                     idx_mes = MESES_PT.index(mes_comp_sel) + 1
-                    data_comp = date(int(ano_comp_sel), idx_mes, 1) # Salva como o dia 1 do mês para base contábil
+                    data_comp = date(int(ano_comp_sel), idx_mes, 1)
                     
                     status_lanc = col3.selectbox("Situação", ["Concluído", "Pendente"], key="unico_status")
                     label_data = "Data de Pagamento" if status_lanc == "Concluído" else "Data de Vencimento"
@@ -838,7 +837,6 @@ elif page == "Tesouraria":
                         url_anexo = comprimir_e_fazer_upload(arquivo, pasta="notas") if arquivo else None
                         
                         if recorrente:
-                            # Salva a Regra de Recorrência principal
                             sb_request("lancamentos", "POST", {
                                 "descricao": descricao,
                                 "tipo": tipo_lanc,
@@ -855,7 +853,6 @@ elif page == "Tesouraria":
                                 "url_anexo": url_anexo
                             })
                         else:
-                            # Salva Lançamento Normal Único
                             sb_request("lancamentos", "POST", {
                                 "descricao": descricao,
                                 "tipo": tipo_lanc,
@@ -918,7 +915,6 @@ elif page == "Tesouraria":
             if dff.empty:
                 st.info("Nenhum lançamento encontrado para os filtros selecionados.")
             else:
-                # Ordenação: Entradas no topo, Saídas embaixo, ambas decrescentes por data
                 dff['ordem_tipo'] = dff['tipo'].map({'Entrada': 0, 'Saída': 1})
                 dff = dff.sort_values(by=['ordem_tipo', 'data_competencia'], ascending=[True, False])
                 
@@ -960,15 +956,95 @@ elif page == "Tesouraria":
         if recorrencias_ativas.empty:
             st.info("Nenhuma regra recorrente cadastrada.")
         else:
-            st.caption("Aqui você pode visualizar e excluir modelos de recorrência cadastrados.")
+            map_cat = {str(c['id']): c['nome'] for c in categorias_db}
+            if 'categoria_nome' not in recorrencias_ativas.columns:
+                recorrencias_ativas['categoria_nome'] = recorrencias_ativas['categoria_id'].astype(str).map(map_cat)
+
+            st.markdown("---")
+            # Cabeçalho da listagem
+            h1, h2, h3, h4, h5, h6, h7 = st.columns([1.2, 2.5, 2, 1.3, 1.3, 1.3, 1.2])
+            h1.markdown("**Tipo**")
+            h2.markdown("**Descrição**")
+            h3.markdown("**Categoria**")
+            h4.markdown("**De**")
+            h5.markdown("**Até**")
+            h6.markdown("**Valor Base**")
+            h7.markdown("**Ações**")
+            st.markdown("<hr style='margin:4px 0;border:none;border-top:1px solid #CBD5E1;'>", unsafe_allow_html=True)
+
             for _, rec_row in recorrencias_ativas.iterrows():
-                rc1, rc2, rc3, rc4 = st.columns([3, 1.5, 1.5, 1])
-                rc1.write(f"**{rec_row['descricao']}** ({rec_row['tipo']})")
-                rc2.write(fmt_moeda(rec_row['valor']))
-                rc3.write(f"Até: {pd.to_datetime(rec_row.get('data_fim_recorrencia')).strftime('%d.%m.%Y') if pd.notna(rec_row.get('data_fim_recorrencia')) else 'Indeterminado'}")
-                if rc4.button("🗑️ Excluir", key=f"del_rec_{rec_row['id']}"):
-                    sb_request("lancamentos", "DELETE", filtros={"id": f"eq.{rec_row['id']}"})
-                    st.cache_data.clear(); st.success("Regra removida!"); time.sleep(1); st.rerun()
+                rec_id = str(rec_row['id'])
+                dt_inicio = pd.to_datetime(rec_row.get('data_competencia')).strftime('%d.%m.%Y') if pd.notna(rec_row.get('data_competencia')) else '—'
+                dt_fim = pd.to_datetime(rec_row.get('data_fim_recorrencia')).strftime('%d.%m.%Y') if pd.notna(rec_row.get('data_fim_recorrencia')) else 'Indeterminado'
+                
+                rc_tipo, rc_desc, rc_cat, rc_de, rc_ate, rc_val, rc_acoes = st.columns([1.2, 2.5, 2, 1.3, 1.3, 1.3, 1.2])
+                
+                rc_tipo.write(f"**{rec_row['tipo']}**")
+                rc_desc.write(rec_row['descricao'])
+                rc_cat.write(rec_row.get('categoria_nome', '—'))
+                rc_de.write(dt_inicio)
+                rc_ate.write(dt_fim)
+                rc_val.write(fmt_moeda(rec_row['valor']))
+                
+                b_edit, b_del = rc_acoes.columns(2)
+                
+                if b_edit.button("✏️", key=f"btn_edit_rec_{rec_id}", help="Editar Regra"):
+                    st.session_state[f"editing_rec_{rec_id}"] = not st.session_state.get(f"editing_rec_{rec_id}", False)
+                    st.rerun()
+                    
+                if b_del.button("🗑️", key=f"btn_del_rec_{rec_id}", help="Excluir Regra"):
+                    sb_request("lancamentos", "DELETE", filtros={"id": f"eq.{rec_id}"})
+                    if f"editing_rec_{rec_id}" in st.session_state:
+                        del st.session_state[f"editing_rec_{rec_id}"]
+                    st.cache_data.clear()
+                    st.success("Regra removida!")
+                    time.sleep(1)
+                    st.rerun()
+
+                # Bloco de edição inline caso o botão editar seja acionado
+                if st.session_state.get(f"editing_rec_{rec_id}", False):
+                    with st.container():
+                        st.markdown(f"---")
+                        st.info(f"✏️ **Editando Regra:** {rec_row['descricao']}")
+                        with st.form(f"form_edit_rec_{rec_id}"):
+                            e_tipo = st.selectbox("Tipo", ["Entrada", "Saída"], index=0 if rec_row['tipo'] == "Entrada" else 1, key=f"ed_rec_tipo_{rec_id}")
+                            e_desc = st.text_input("Descrição", value=rec_row['descricao'], key=f"ed_rec_desc_{rec_id}")
+                            e_valor = st.number_input("Valor Base (R$)", value=float(rec_row['valor'] or 0), format="%.2f", key=f"ed_rec_val_{rec_id}")
+                            
+                            cats_r_edit = [c for c in categorias_db if c.get("tipo") == e_tipo]
+                            opcoes_cats_r = {c["nome"]: c["id"] for c in cats_r_edit}
+                            atual_cat_nome = rec_row.get('categoria_nome')
+                            idx_c = list(opcoes_cats_r.keys()).index(atual_cat_nome) if atual_cat_nome in opcoes_cats_r else 0
+                            
+                            e_cat = st.selectbox("Categoria", list(opcoes_cats_r.keys()) if opcoes_cats_r else ["-"], index=idx_c, key=f"ed_rec_cat_{rec_id}")
+                            
+                            col_d1, col_d2 = st.columns(2)
+                            e_dt_ini = col_d1.date_input("Data Inicial (De)", pd.to_datetime(rec_row['data_competencia']).date() if pd.notna(rec_row.get('data_competencia')) else date.today(), key=f"ed_rec_de_{rec_id}")
+                            e_dt_fim = col_d2.date_input("Data Final (Até)", pd.to_datetime(rec_row['data_fim_recorrencia']).date() if pd.notna(rec_row.get('data_fim_recorrencia')) else date.today() + pd.DateOffset(months=12), key=f"ed_rec_ate_{rec_id}")
+                            
+                            col_s1, col_s2 = st.columns(2)
+                            if col_s1.form_submit_button("💾 Salvar Alterações", use_container_width=True, type="primary"):
+                                carga_rec = {
+                                    "descricao": e_desc,
+                                    "tipo": e_tipo,
+                                    "valor": float(e_valor),
+                                    "categoria_id": opcoes_cats_r[e_cat] if opcoes_cats_r else None,
+                                    "data_competencia": str(e_dt_ini),
+                                    "data_vencimento": str(e_dt_ini),
+                                    "data_fim_recorrencia": str(e_dt_fim)
+                                }
+                                res = sb_request("lancamentos", "PATCH", carga_rec, filtros={"id": f"eq.{rec_id}"})
+                                if res is not None:
+                                    st.session_state[f"editing_rec_{rec_id}"] = False
+                                    st.cache_data.clear()
+                                    st.success("Regra atualizada com sucesso!")
+                                    time.sleep(1)
+                                    st.rerun()
+                                    
+                            if col_s2.form_submit_button("❌ Cancelar", use_container_width=True):
+                                st.session_state[f"editing_rec_{rec_id}"] = False
+                                st.rerun()
+                st.markdown("<hr style='margin:6px 0;border:none;border-top:1px solid #E2E8F0;'>", unsafe_allow_html=True)
 # ==========================================
 # CONCILIAÇÃO BANCÁRIA (COM IMPORTAÇÃO INTELIGENTE DE OFX)
 # ==========================================
