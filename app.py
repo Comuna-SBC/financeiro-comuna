@@ -782,7 +782,7 @@ elif page == "Tesouraria":
         "⏳ Contas a Pagar/Receber", 
         "📜 Histórico Completo", 
         "🔁 Regras Recorrentes"
-    ], key="tesouraria_active_tab")
+    ], key="tesouraria_active_tab", on_change="rerun")
 
     with tab1:
         st.markdown("### Registrar Movimentação")
