@@ -1078,53 +1078,69 @@ elif page == "Conciliação Bancária":
                         if res is not None:
                             st.cache_data.clear()
 # ==========================================
+# ==========================================
 # PAINEL DE EVENTOS
 # ==========================================
 elif page == "Painel de Eventos":
     st.title("Painel de Eventos")
     st.markdown("Cadastre acampamentos, retiros e conferências para abrir inscrições.")
 
-    with st.expander("➕ Criar Novo Evento", expanded=len(eventos_db) == 0):
-        with st.form("form_evento", clear_on_submit=True):
-            nome_ev = st.text_input("Nome do Evento", placeholder="Ex.: Acampamento de Adolescentes 2026")
-            col1, col2, col3 = st.columns(3)
-            data_ev = col1.date_input("Data do Evento", date.today())
-            valor_ev = col2.number_input("Valor Total da Inscrição (R$)", min_value=0.0, step=10.0, format="%.2f")
-            vagas_ev = col3.number_input("Total de Vagas", min_value=0, step=1)
-            chave_pix_ev = st.text_input("Chave Pix para recebimento")
-            descricao_ev = st.text_area("Descrição e orientações do evento", placeholder="Ex.: Local, horários, o que levar.")
-            col4, col5 = st.columns(2)
-            permite_parc = col4.checkbox("Permitir pagamento parcelado")
-            num_parc = col5.number_input("Número máximo de parcelas", min_value=1, max_value=12, value=1, step=1, disabled=not permite_parc)
+    col_novo, col_edit = st.columns(2)
+    with col_novo:
+        with st.expander("➕ Criar Novo Evento", expanded=len(eventos_db) == 0):
+            with st.form("form_evento", clear_on_submit=True):
+                nome_ev = st.text_input("Nome do Evento")
+                data_ev = st.date_input("Data do Evento", date.today())
+                valor_ev = st.number_input("Valor da Inscrição (R$)", min_value=0.0, format="%.2f")
+                vagas_ev = st.number_input("Total de Vagas", min_value=0, step=1)
+                chave_pix_ev = st.text_input("Chave Pix")
+                descricao_ev = st.text_area("Descrição/Orientações")
+                permite_parc = st.checkbox("Permitir parcelamento")
+                num_parc = st.number_input("Máx. Parcelas", min_value=1, max_value=12, value=1, disabled=not permite_parc)
 
-            criar_evento = st.form_submit_button("Criar Evento", use_container_width=True)
-            if criar_evento:
-                if not nome_ev.strip():
-                    st.warning("Informe o nome do evento.")
-                elif valor_ev <= 0:
-                    st.warning("Informe um valor de inscrição maior que zero.")
-                elif vagas_ev <= 0:
-                    st.warning("Informe uma quantidade de vagas maior que zero.")
-                elif not chave_pix_ev.strip():
-                    st.warning("Informe a chave Pix do evento.")
-                else:
-                    resultado = sb_request("eventos", "POST", {
-                        "nome": nome_ev.strip(),
-                        "descricao": descricao_ev.strip() or None,
-                        "data_evento": str(data_ev),
-                        "valor_inscricao": float(valor_ev),
-                        "vagas_total": int(vagas_ev),
-                        "chave_pix": chave_pix_ev.strip(),
-                        "centro_custo": nome_ev.strip(),
-                        "status": "Aberto",
-                        "permite_parcelamento": bool(permite_parc),
-                        "numero_parcelas": int(num_parc) if permite_parc else 1
-                    })
-                    if resultado is not None:
-                        st.cache_data.clear()
-                        st.success("Evento criado com sucesso!")
-                        time.sleep(1)
-                        st.rerun()
+                if st.form_submit_button("Criar Evento", use_container_width=True):
+                    if not nome_ev.strip() or valor_ev <= 0 or vagas_ev <= 0 or not chave_pix_ev.strip():
+                        st.warning("Preencha Nome, Valor > 0, Vagas > 0 e Chave Pix.")
+                    else:
+                        sb_request("eventos", "POST", {
+                            "nome": nome_ev.strip(), "descricao": descricao_ev.strip() or None,
+                            "data_evento": str(data_ev), "valor_inscricao": float(valor_ev),
+                            "vagas_total": int(vagas_ev), "chave_pix": chave_pix_ev.strip(),
+                            "centro_custo": nome_ev.strip(), "status": "Aberto",
+                            "permite_parcelamento": bool(permite_parc), "numero_parcelas": int(num_parc) if permite_parc else 1
+                        })
+                        st.cache_data.clear(); st.success("Evento criado!"); time.sleep(1); st.rerun()
+
+    with col_edit:
+        with st.expander("✏️ Editar ou Excluir Evento"):
+            if eventos_db:
+                ev_map = {e['nome']: e for e in eventos_db}
+                ev_sel = st.selectbox("Selecione o Evento", list(ev_map.keys()))
+                ev_data = ev_map[ev_sel]
+                
+                with st.form("form_edit_evento"):
+                    n_nome_ev = st.text_input("Nome", value=ev_data['nome'])
+                    n_data_ev = st.date_input("Data", pd.to_datetime(ev_data.get('data_evento', date.today())).date())
+                    n_valor_ev = st.number_input("Valor (R$)", value=float(ev_data.get('valor_inscricao') or 0), format="%.2f")
+                    n_vagas_ev = st.number_input("Vagas", value=int(ev_data.get('vagas_total') or 0))
+                    n_pix = st.text_input("Pix", value=ev_data.get('chave_pix') or "")
+                    n_desc = st.text_area("Descrição", value=ev_data.get('descricao') or "")
+                    
+                    c_btn1, c_btn2 = st.columns(2)
+                    b_upd_ev = c_btn1.form_submit_button("💾 Atualizar", use_container_width=True)
+                    b_del_ev = c_btn2.form_submit_button("🗑️ Excluir", use_container_width=True)
+                    
+                    if b_upd_ev:
+                        sb_request("eventos", "PATCH", {
+                            "nome": n_nome_ev, "data_evento": str(n_data_ev), "valor_inscricao": float(n_valor_ev),
+                            "vagas_total": int(n_vagas_ev), "chave_pix": n_pix, "descricao": n_desc
+                        }, filtros={"id": f"eq.{ev_data['id']}"})
+                        st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1); st.rerun()
+                    if b_del_ev:
+                        sb_request("eventos", "DELETE", filtros={"id": f"eq.{ev_data['id']}"})
+                        st.cache_data.clear(); st.success("Excluído!"); time.sleep(1); st.rerun()
+            else:
+                st.info("Nenhum evento cadastrado.")
 
     eventos_atualizados = carregar("eventos")
     st.markdown("---")
