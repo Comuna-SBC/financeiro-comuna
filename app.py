@@ -1169,6 +1169,12 @@ elif page == "Analytics Financeiro":
             df_agrupado = df_filtrado.groupby(['mes_ano', 'tipo'])['valor'].sum().unstack(fill_value=0)
             df_agrupado = df_agrupado.sort_index()
 
+            # Garante que as colunas existam como listas/Series, mesmo se não houver dados no tipo
+            if 'Entrada' not in df_agrupado.columns:
+                df_agrupado['Entrada'] = 0.0
+            if 'Saída' not in df_agrupado.columns:
+                df_agrupado['Saída'] = 0.0
+
             metas_lista = carregar("metas_mensais")
             df_metas = pd.DataFrame(metas_lista)
             metas_map = {}
@@ -1177,8 +1183,10 @@ elif page == "Analytics Financeiro":
                 metas_map = df_metas.set_index('mes_ano').to_dict('index')
 
             fig = go.Figure()
-            fig.add_bar(x=df_agrupado.index, y=df_agrupado.get('Entrada', 0), name='Entradas', marker_color='#2563EB')
-            fig.add_bar(x=df_agrupado.index, y=df_agrupado.get('Saída', 0), name='Saídas', marker_color='#EF4444')
+            # Agora chamamos a coluna diretamente em vez de usar .get()
+            fig.add_bar(x=df_agrupado.index, y=df_agrupado['Entrada'], name='Entradas', marker_color='#2563EB')
+            fig.add_bar(x=df_agrupado.index, y=df_agrupado['Saída'], name='Saídas', marker_color='#EF4444')
+            
             if metas_map:
                 fig.add_scatter(x=df_agrupado.index, y=[metas_map.get(m, {}).get('meta_entradas') for m in df_agrupado.index],
                                name='Meta Entradas', mode='lines+markers', line=dict(color='#1E40AF', dash='dot'))
@@ -1186,7 +1194,6 @@ elif page == "Analytics Financeiro":
                                name='Teto Saídas', mode='lines+markers', line=dict(color='#991B1B', dash='dot'))
             fig.update_layout(barmode='group', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='#1E293B', legend_title_text='')
             st.plotly_chart(fig, use_container_width=True)
-
         st.markdown("---")
         col_g1, col_g2 = st.columns(2)
 
