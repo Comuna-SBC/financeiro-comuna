@@ -800,11 +800,10 @@ elif page == "Tesouraria":
                 valor = col1.number_input("Valor (R$)", min_value=0.0, step=50.0, format="%.2f", key="unico_valor")
                 
                 if tipo_lanc == "Saída":
-                    # Mês e Ano de Competência para Saídas (Formato MM.YYYY)
-                    st.caption("📅 Mês de Competência Contábil (Referência MM.YYYY)")
+                    # Mês e Ano de Competência para Saídas (Formato MM.YYYY)                
                     cc_m, cc_a = col2.columns(2)
-                    mes_comp_sel = cc_m.selectbox("Mêssss", MESES_PT, index=date.today().month-1, key="unico_mes_comp")
-                    ano_comp_sel = cc_a.number_input("Ano", min_value=2020, max_value=2100, value=date.today().year, step=1, key="unico_ano_comp")
+                    mes_comp_sel = cc_m.selectbox("Mês Competência", MESES_PT, index=date.today().month-1, key="unico_mes_comp")
+                    ano_comp_sel = cc_a.number_input("Ano Competência", min_value=2020, max_value=2100, value=date.today().year, step=1, key="unico_ano_comp")
                     
                     idx_mes = MESES_PT.index(mes_comp_sel) + 1
                     data_comp = date(int(ano_comp_sel), idx_mes, 1) # Salva como o dia 1 do mês para base contábil
