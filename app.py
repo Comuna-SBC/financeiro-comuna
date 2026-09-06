@@ -542,7 +542,8 @@ if page == "Resumo do Dia":
                 st.rerun()
 
 # ==========================================
-# VISÃO EXCEL (CONSOLIDADO) - NOVO COM EXPORTAÇÃO E DRILL-DOWN
+# ==========================================
+# VISÃO EXCEL (CONSOLIDADO)
 # ==========================================
 elif page == "Visão Excel (Consolidado)":
     st.title("📋 Visão Excel (Consolidado)")
@@ -573,14 +574,17 @@ elif page == "Visão Excel (Consolidado)":
         
         if not df_ano.empty:
             df_ent = df_ano[(df_ano['tipo'] == 'Entrada') & (df_ano['status'] == 'Concluído')]
-            pivot_ent = pd.pivot_table(df_ent, values='valor', index='categoria_nome', columns='mes_num', aggfunc='sum', fill_value=0.0)
+            if not df_ent.empty:
+                pivot_ent = pd.pivot_table(df_ent, values='valor', index='categoria_nome', columns='mes_num', aggfunc='sum', fill_value=0.0)
+
+        # CORREÇÃO: Cria as colunas de meses ANTES de adicionar as categorias
+        for m in range(1, 13):
+            if m not in pivot_ent.columns:
+                pivot_ent[m] = 0.0
 
         for cat in cats_entrada:
             if cat not in pivot_ent.index:
                 pivot_ent.loc[cat] = 0.0
-        for m in range(1, 13):
-            if m not in pivot_ent.columns:
-                pivot_ent[m] = 0.0
 
         pivot_ent = pivot_ent[[m for m in range(1, 13)]]
         pivot_ent.columns = MESES_PT
@@ -593,14 +597,17 @@ elif page == "Visão Excel (Consolidado)":
         
         if not df_ano.empty:
             df_sai = df_ano[(df_ano['tipo'] == 'Saída') & (df_ano['status'] == 'Concluído')]
-            pivot_sai = pd.pivot_table(df_sai, values='valor', index='categoria_nome', columns='mes_num', aggfunc='sum', fill_value=0.0)
+            if not df_sai.empty:
+                pivot_sai = pd.pivot_table(df_sai, values='valor', index='categoria_nome', columns='mes_num', aggfunc='sum', fill_value=0.0)
+
+        # CORREÇÃO: Cria as colunas de meses ANTES de adicionar as categorias
+        for m in range(1, 13):
+            if m not in pivot_sai.columns:
+                pivot_sai[m] = 0.0
 
         for cat in cats_saida:
             if cat not in pivot_sai.index:
                 pivot_sai.loc[cat] = 0.0
-        for m in range(1, 13):
-            if m not in pivot_sai.columns:
-                pivot_sai[m] = 0.0
 
         pivot_sai = pivot_sai[[m for m in range(1, 13)]]
         pivot_sai.columns = MESES_PT
@@ -652,8 +659,8 @@ elif page == "Visão Excel (Consolidado)":
 
     # 2. SEÇÃO DE DETALHAMENTO (DRILL-DOWN)
     st.markdown("---")
-    st.markdown("### 🔍 Detalhar Valores por Mês e Categoria (Drill-down)")
-    st.markdown("Selecione os filtros abaixo para ver detalhadamente quais itens compõem a soma vista nas matrizes acima e exporte esta lista específica.")
+    st.markdown("### 🔍 Detalhar Valores por Mês e Categoria")
+    st.markdown("Selecione os filtros abaixo para ver detalhadamente quais itens compõem a soma vista nas matrizes acima.")
 
     col_d1, col_d2, col_d3 = st.columns(3)
     mes_drill = col_d1.selectbox("Selecione o Mês", ["Todos"] + MESES_PT)
@@ -688,7 +695,6 @@ elif page == "Visão Excel (Consolidado)":
                 file_name=f"Detalhes_{ano_sel}_{mes_drill}_{cat_drill}.xlsx".replace(" ", "_"),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-
 # ==========================================
 # TESOURARIA
 # ==========================================
