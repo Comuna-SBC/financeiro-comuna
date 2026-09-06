@@ -559,7 +559,8 @@ if page == "Resumo do Dia":
                 st.rerun()
 # ==========================================
 # ==========================================
-# VISÃO EXCEL (CONSOLIDADO)
+# ==========================================
+# VISÃO CONSOLIDADA
 # ==========================================
 elif page == "Visão Consolidada":
     st.title("📋 Visão Consolidada")
@@ -593,7 +594,6 @@ elif page == "Visão Consolidada":
             if not df_ent.empty:
                 pivot_ent = pd.pivot_table(df_ent, values='valor', index='categoria_nome', columns='mes_num', aggfunc='sum', fill_value=0.0)
 
-        # CORREÇÃO: Cria as colunas de meses ANTES de adicionar as categorias
         for m in range(1, 13):
             if m not in pivot_ent.columns:
                 pivot_ent[m] = 0.0
@@ -616,7 +616,6 @@ elif page == "Visão Consolidada":
             if not df_sai.empty:
                 pivot_sai = pd.pivot_table(df_sai, values='valor', index='categoria_nome', columns='mes_num', aggfunc='sum', fill_value=0.0)
 
-        # CORREÇÃO: Cria as colunas de meses ANTES de adicionar as categorias
         for m in range(1, 13):
             if m not in pivot_sai.columns:
                 pivot_sai[m] = 0.0
@@ -673,10 +672,23 @@ elif page == "Visão Consolidada":
             use_container_width=True
         )
 
-   # 2. SEÇÃO DE DETALHAMENTO (DRILL-DOWN COM DOWNLOAD INDIVIDUAL)
+    # 2. SEÇÃO DE DETALHAMENTO (DRILL-DOWN COM DOWNLOAD INDIVIDUAL)
     st.markdown("---")
     st.markdown("### 🔍 Detalhar Valores por Mês e Categoria")
     st.markdown("Selecione os filtros abaixo para ver detalhadamente quais itens compõem a soma e baixe os comprovantes de cada despesa diretamente.")
+
+    # Estilo CSS compacto para ajustar a fonte e manter cada item em uma linha só
+    st.markdown("""
+        <style>
+            .drill-row {
+                font-size: 13px !important;
+                padding: 2px 0px !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
     col_d1, col_d2, col_d3 = st.columns(3)
     mes_drill = col_d1.selectbox("Selecione o Mês", ["Todos"] + MESES_PT)
@@ -700,10 +712,14 @@ elif page == "Visão Consolidada":
         else:
             st.markdown("#### Lista de Lançamentos e Comprovantes")
             
-            # Cabeçalho customizado para a lista com ações
-            header_cols = st.columns([1.2, 1, 2.5, 2, 1.3, 1.2, 1.2])
-            header_cols[0].markdown("**Data**")
-            header_cols[1].markdown("**Tipo**")
+            # Ordenação solicitada: 1º Saídas em cima e Entradas embaixo, 2º Data mais recente em cima
+            df_detalhe['ordem_tipo'] = df_detalhe['tipo'].map({'Saída': 0, 'Entrada': 1})
+            df_detalhe = df_detalhe.sort_values(by=['ordem_tipo', 'data_competencia'], ascending=[True, False])
+            
+            # Cabeçalho customizado invertendo Tipo (coluna 1) e Data (coluna 2)
+            header_cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2])
+            header_cols[0].markdown("**Tipo**")
+            header_cols[1].markdown("**Data**")
             header_cols[2].markdown("**Descrição**")
             header_cols[3].markdown("**Categoria**")
             header_cols[4].markdown("**Valor**")
@@ -711,38 +727,37 @@ elif page == "Visão Consolidada":
             header_cols[6].markdown("**Documento**")
             st.markdown("<hr style='margin:4px 0;border-color:#CBD5E1;'>", unsafe_allow_html=True)
 
-            for _, row in df_detalhe.sort_values('data_competencia', ascending=False).iterrows():
-                cols = st.columns([1.2, 1, 2.5, 2, 1.3, 1.2, 1.2])
+            for _, row in df_detalhe.iterrows():
+                cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2])
                 
-                cols[0].write(row['data_competencia'].strftime('%d/%m/%Y'))
-                cols[1].write(row['tipo'])
-                cols[2].write(row['descricao'] or '—')
-                cols[3].write(row['categoria_nome'])
-                cols[4].write(fmt_moeda(row['valor']))
-                cols[5].write(row['conta_nome'])
+                # Invertido: Coluna 0 = Tipo, Coluna 1 = Data
+                cols[0].markdown(f"<div class='drill-row'>{row['tipo']}</div>", unsafe_allow_html=True)
+                cols[1].markdown(f"<div class='drill-row'>{row['data_competencia'].strftime('%d/%m/%Y')}</div>", unsafe_allow_html=True)
+                cols[2].markdown(f"<div class='drill-row'>{row['descricao'] or '—'}</div>", unsafe_allow_html=True)
+                cols[3].markdown(f"<div class='drill-row'>{row['categoria_nome']}</div>", unsafe_allow_html=True)
+                cols[4].markdown(f"<div class='drill-row'>{fmt_moeda(row['valor'])}</div>", unsafe_allow_html=True)
+                cols[5].markdown(f"<div class='drill-row'>{row['conta_nome']}</div>", unsafe_allow_html=True)
                 
-                # Tratamento do botão de download individual do anexo
                 path_anexo = row.get('url_anexo')
                 if path_anexo and isinstance(path_anexo, str) and path_anexo.strip():
                     try:
-                        # Gera uma URL assinada temporária válida por 1 hora para visualização/download direto
                         link_anexo = supabase.storage.from_("comprovantes").create_signed_url(path_anexo, 3600)
                         url_final = link_anexo.get("signedURL") or link_anexo.get("signed_url")
                         if url_final:
-                            cols[6].markdown(f"[📥 Baixar]({url_final})", unsafe_allow_html=True)
+                            cols[6].markdown(f"<div class='drill-row'><a href='{url_final}' target='_blank'>📥 Baixar</a></div>", unsafe_allow_html=True)
                         else:
-                            cols[6].write("—")
+                            cols[6].markdown("<div class='drill-row'>—</div>", unsafe_allow_html=True)
                     except Exception:
-                        cols[6].write("Indisponível")
+                        cols[6].markdown("<div class='drill-row'>Indisponível</div>", unsafe_allow_html=True)
                 else:
-                    cols[6].write("Sem anexo")
+                    cols[6].markdown("<div class='drill-row'>Sem anexo</div>", unsafe_allow_html=True)
                     
                 st.markdown("<hr style='margin:2px 0;border-color:#F1F5F9;'>", unsafe_allow_html=True)
 
             st.markdown("")
-            exibir_export = df_detalhe[['data_competencia', 'tipo', 'descricao', 'categoria_nome', 'valor', 'conta_nome']].copy()
+            exibir_export = df_detalhe[['type' if 'type' in df_detalhe else 'tipo', 'data_competencia', 'descricao', 'categoria_nome', 'valor', 'conta_nome']].copy()
             exibir_export['data_competencia'] = exibir_export['data_competencia'].dt.strftime('%d/%m/%Y')
-            exibir_export.columns = ['Data', 'Tipo', 'Descrição', 'Categoria', 'Valor', 'Conta']
+            exibir_export.columns = ['Tipo', 'Data', 'Descrição', 'Categoria', 'Valor', 'Conta']
             
             excel_detalhe = to_excel_bytes({"Detalhes": exibir_export})
             st.download_button(
@@ -750,8 +765,7 @@ elif page == "Visão Consolidada":
                 data=excel_detalhe,
                 file_name=f"Detalhes_{ano_sel}_{mes_drill}_{cat_drill}.xlsx".replace(" ", "_"),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-# ==========================================
+            )==================
 # ==========================================
 # ==========================================
 # ==========================================
