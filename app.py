@@ -174,6 +174,12 @@ def fmt_moeda(v):
     except Exception:
         return "R$ 0,00"
 
+def safe_map_moeda(df):
+    try:
+        return df.map(fmt_moeda)
+    except AttributeError:
+        return df.applymap(fmt_moeda)
+
 def somente_digitos(txt):
     return "".join(ch for ch in (txt or "") if ch.isdigit())
 
@@ -426,7 +432,7 @@ nav_button("Analytics Financeiro", "📊")
 nav_button("Exportar Contabilidade", "📤")
 
 st.sidebar.markdown("---")
-st.sidebar.caption("Gestão Financeira • v4.1")
+st.sidebar.caption("Gestão Financeira • v4.2")
 
 page = st.session_state.page
 
@@ -523,7 +529,7 @@ if page == "Resumo do Dia":
                 st.rerun()
 
 # ==========================================
-# VISÃO EXCEL (CONSOLIDADO - NOVO!)
+# VISÃO EXCEL (CONSOLIDADO)
 # ==========================================
 elif page == "Visão Excel (Consolidado)":
     st.title("📋 Visão Excel (Consolidado)")
@@ -561,7 +567,6 @@ elif page == "Visão Excel (Consolidado)":
         else:
             pivot_ent = pd.DataFrame()
 
-        # Garante todas as categorias de entrada e os 12 meses
         for cat in cats_entrada:
             if cat not in pivot_ent.index:
                 pivot_ent.loc[cat] = 0.0
@@ -573,7 +578,7 @@ elif page == "Visão Excel (Consolidado)":
         pivot_ent.columns = MESES_PT
         pivot_ent['TOTAL ANUAL'] = pivot_ent.sum(axis=1)
         
-        st.dataframe(pivot_ent.applymap(fmt_moeda), use_container_width=True)
+        st.dataframe(safe_map_moeda(pivot_ent), use_container_width=True)
 
     with tab_ex2:
         st.subheader(f"Saídas — Ano {ano_sel}")
@@ -603,12 +608,11 @@ elif page == "Visão Excel (Consolidado)":
         pivot_sai.columns = MESES_PT
         pivot_sai['TOTAL ANUAL'] = pivot_sai.sum(axis=1)
 
-        st.dataframe(pivot_sai.applymap(fmt_moeda), use_container_width=True)
+        st.dataframe(safe_map_moeda(pivot_sai), use_container_width=True)
 
     with tab_ex3:
         st.subheader(f"Consolidado Geral — Ano {ano_sel}")
         
-        # Monta sumário mensal de Entradas, Saídas e Saldo
         resumo_geral = pd.DataFrame(index=MESES_PT)
         tot_ent = []
         tot_sai = []
@@ -630,7 +634,7 @@ elif page == "Visão Excel (Consolidado)":
             saldos_mes.append(saldo_acum)
         resumo_geral['Saldo em Caixa Acumulado'] = saldos_mes
 
-        st.dataframe(resumo_geral.applymap(fmt_moeda), use_container_width=True)
+        st.dataframe(safe_map_moeda(resumo_geral), use_container_width=True)
 
         st.markdown("#### Saldo Inicial por Conta Bancária")
         if contas_bancarias_db:
@@ -941,7 +945,7 @@ elif page == "Inscrições e Comprovantes":
         evento_sel = st.selectbox("Evento", list(evento_opcoes.keys()))
         evento_id_sel = evento_opcoes[evento_sel]
 
-        inscricoes_evento = [i for i in carregar("inscricoes") if i.get('evento_id') == evento_id_sel]
+        inscricoes_evento = [i for i in carregar("inscricoes") if i.get('evento_id'] == evento_id_sel]
         pagamentos_all = carregar("inscricao_pagamentos")
         map_insc = {i["id"]: i for i in inscricoes_evento}
 
