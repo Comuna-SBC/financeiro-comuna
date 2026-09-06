@@ -452,7 +452,8 @@ st.sidebar.caption("Gestão Financeira • Final")
 page = st.session_state.page
 
 # ==========================================
-# RESUMO DO DIA
+# ==========================================
+# RESUMO DO DIA (COM ALERTA DE RECORRÊNCIAS EXPIRANDO)
 # ==========================================
 if page == "Resumo do Dia":
     st.title("Resumo do Dia")
@@ -476,7 +477,19 @@ if page == "Resumo do Dia":
     contas_hoje = contas_pendentes[contas_pendentes["data_vencimento"] == hoje].copy() if not contas_pendentes.empty and "data_vencimento" in contas_pendentes.columns else pd.DataFrame()
     contas_atrasadas = contas_pendentes[contas_pendentes["data_vencimento"] < hoje].copy() if not contas_pendentes.empty and "data_vencimento" in contas_pendentes.columns else pd.DataFrame()
 
-    pagamentos_pendentes = [p for p in pagamentos_resumo if p.get("status") == "Pendente"]
+    # Filtro para recorrências expirando no mês atual
+    recorrencias_expirando = pd.DataFrame()
+    if not df.empty and 'recorrente' in df.columns and 'data_fim_recorrencia' in df.columns:
+        df['data_fim_recorrencia'] = pd.to_datetime(df['data_fim_recorrencia'], errors='coerce')
+        mes_atual_num = hoje.month
+        ano_atual_num = hoje.year
+        recorrencias_expirando = df[
+            (df['recorrente'] == True) & 
+            (df['data_fim_recorrencia'].dt.month == mes_atual_num) & 
+            (df['data_fim_recorrencia'].dt.year == ano_atual_num)
+        ]
+
+    pagamentos_pendentes = [p for p in pagamentos_resumo if p.get("status"] == "Pendente"]
     inscricoes_por_id = {str(i.get("id")): i for i in inscricoes_resumo}
     eventos_por_id = {str(e.get("id")): e for e in eventos_resumo}
 
@@ -484,7 +497,11 @@ if page == "Resumo do Dia":
     col1.metric("Saldo Consolidado", fmt_moeda(saldo_consolidado))
     col2.metric("A Pagar Hoje", str(len(contas_hoje)))
     col3.metric("Contas Atrasadas", str(len(contas_atrasadas)))
-    col4.metric("Comprovantes para Validar", str(len(pagamentos_pendentes)))
+    col4.metric("Recorrências Expirando", str(len(recorrencias_expirando)))
+
+    # Alerta visual para recorrências expirando neste mês
+    if not recorrencias_expirando.empty:
+        st.warning(f"⚠️ Atenção: Existem **{len(recorrencias_expirando)}** lançamentos recorrentes com data final de recorrência programada para este mês de {MESES_PT[hoje.month-1].lower()}. Verifique a necessidade de renovação.")
 
     st.markdown("---")
     coluna_contas, coluna_comprovantes = st.columns(2)
@@ -540,7 +557,6 @@ if page == "Resumo do Dia":
             if st.button("Ir para Inscrições e Comprovantes →", key="resumo_ir_comprovantes", use_container_width=True):
                 st.session_state.page = "Inscrições e Comprovantes"
                 st.rerun()
-
 # ==========================================
 # ==========================================
 # VISÃO EXCEL (CONSOLIDADO)
@@ -736,19 +752,23 @@ elif page == "Visão Excel (Consolidado)":
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 # ==========================================
-# TESOURARIA
+# ==========================================
+# TESOURARIA (COM FILTRO DINÂMICO E RECORRÊNCIA POR DATA FINAL)
 # ==========================================
 elif page == "Tesouraria":
     st.title("Tesouraria")
     tab1, tab2, tab3 = st.tabs(["📝 Novo Lançamento", "⏳ Contas a Pagar/Receber", "📜 Histórico Completo"])
 
     with tab1:
+        # Usamos st.container com controles fora do form para alteração imediata de estado na tela sem dar enter
+        tipo_lanc = st.radio("Tipo", ["Entrada", "Saída"], horizontal=True, key="input_tipo_lanc")
+        
         with st.form("form_lancamento", clear_on_submit=True):
-            col1, col2, col3 = st.columns(3)
-            tipo_lanc = col1.radio("Tipo", ["Entrada", "Saída"], horizontal=True)
-            valor = col2.number_input("Valor (R$)", min_value=0.0, step=50.0, format="%.2f")
-            data_comp = col3.date_input("Data", date.today())
+            col1, col2 = st.columns(2)
+            valor = col1.number_input("Valor (R$)", min_value=0.0, step=50.0, format="%.2f")
+            data_comp = col2.date_input("Data de Competência", date.today())
 
+            # Filtro estrito de categorias com base no tipo selecionado fora do form
             cats_filtradas = [c for c in categorias_db if c.get("tipo") == tipo_lanc]
             opcoes_cats = {c["nome"]: c["id"] for c in cats_filtradas}
 
@@ -756,20 +776,25 @@ elif page == "Tesouraria":
             descricao = col4.text_input("Descrição")
             categoria_sel = col5.selectbox("Categoria", list(opcoes_cats.keys()) if opcoes_cats else ["Cadastre uma categoria"])
 
-            col6, col7, col8 = st.columns(3)
+            col6, col7 = st.columns(2)
             status_lanc = col6.selectbox("Situação", ["Concluído", "Pendente"])
-            data_venc = col7.date_input("Vencimento", data_comp) if status_lanc == "Pendente" else None
+            
+            # Aparece ou some dinamicamente dependendo da escolha da situação
+            data_venc = None
+            if status_lanc == "Pendente":
+                data_venc = col7.date_input("Data de Vencimento", data_comp)
+
             contas_opcoes = {c["nome"]: c["id"] for c in contas_bancarias_db}
+            col8, col9 = st.columns(2)
             conta_sel = col8.selectbox("Conta Bancária", ["Nenhuma"] + list(contas_opcoes.keys()))
-
-            col9, col10 = st.columns(2)
             tag = col9.selectbox("Projeto / Evento", ["Nenhum"] + [e['nome'] for e in eventos_db])
-            arquivo = col10.file_uploader("Comprovante / Nota Fiscal", type=['png', 'jpg', 'jpeg', 'pdf'])
 
-            recorrente = st.checkbox("🔁 Lançamento recorrente (repete nos próximos meses)")
-            repeticoes = 1
+            arquivo = st.file_uploader("Comprovante / Nota Fiscal", type=['png', 'jpg', 'jpeg', 'pdf'])
+
+            recorrente = st.checkbox("🔁 Lançamento recorrente (repete mensalmente até a data final)")
+            data_fim_rec = None
             if recorrente:
-                repeticoes = st.number_input("Repetir por quantos meses (incluindo este)", min_value=2, max_value=24, value=3)
+                data_fim_rec = st.date_input("Data Final da Recorrência", date.today() + pd.DateOffset(months=6))
 
             submit = st.form_submit_button("💾 Salvar Lançamento", use_container_width=True)
 
@@ -780,7 +805,9 @@ elif page == "Tesouraria":
                     with st.spinner("Salvando..."):
                         url_anexo = comprimir_e_fazer_upload(arquivo, pasta="notas") if arquivo else None
                         dados_base = {
-                            "descricao": descricao, "tipo": tipo_lanc, "valor": float(valor),
+                            "descricao": descricao, 
+                            "tipo": tipo_lanc, 
+                            "valor": float(valor),
                             "data_competencia": str(data_comp),
                             "data_vencimento": str(data_venc) if data_venc else None,
                             "status": status_lanc,
@@ -788,24 +815,31 @@ elif page == "Tesouraria":
                             "centro_custo": None if tag == "Nenhum" else tag,
                             "conta_bancaria_id": contas_opcoes.get(conta_sel),
                             "url_anexo": url_anexo,
-                            "recorrente": recorrente
+                            "recorrente": recorrente,
+                            "data_fim_recorrencia": str(data_fim_rec) if recorrente and data_fim_rec else None
                         }
+                        
+                        # Grava o lançamento principal
                         res = sb_request("lancamentos", "POST", dados_base)
                         
-                        if res is not None:
-                            if recorrente and repeticoes > 1:
-                                for i in range(1, int(repeticoes)):
-                                    nova_data = (pd.Timestamp(data_comp) + pd.DateOffset(months=i)).date()
-                                    dados_rep = dict(dados_base)
-                                    dados_rep["data_competencia"] = str(nova_data)
-                                    dados_rep["data_vencimento"] = str(nova_data)
-                                    dados_rep["status"] = "Pendente"
-                                    dados_rep["url_anexo"] = None
-                                    sb_request("lancamentos", "POST", dados_rep)
-                            st.cache_data.clear()
-                            st.success("✅ Lançamento registrado com sucesso!")
-                            time.sleep(1)
-                            st.rerun()
+                        # Se for recorrente, gera as repetições mensais até a data limite informada
+                        if res is not None and recorrente and data_fim_rec:
+                            proxima_data = pd.Timestamp(data_comp) + pd.DateOffset(months=1)
+                            data_limite = pd.Timestamp(data_fim_rec)
+                            
+                            while proxima_data <= data_limite:
+                                dados_rep = dict(dados_base)
+                                dados_rep["data_competencia"] = str(proxima_data.date())
+                                dados_rep["data_vencimento"] = str(proxima_data.date()) if status_lanc == "Pendente" else None
+                                dados_rep["status"] = "Pendente"  # Futuros gerados entram como pendentes
+                                dados_rep["url_anexo"] = None
+                                sb_request("lancamentos", "POST", dados_rep)
+                                proxima_data += pd.DateOffset(months=1)
+
+                        st.cache_data.clear()
+                        st.success("✅ Lançamento registrado com sucesso!")
+                        time.sleep(1)
+                        st.rerun()
 
     with tab2:
         df = carregar_lancamentos_df()
@@ -849,7 +883,6 @@ elif page == "Tesouraria":
             exibir['data_competencia'] = exibir['data_competencia'].dt.strftime('%d/%m/%Y')
             exibir.columns = ['Data', 'Tipo', 'Descrição', 'Categoria', 'Valor (R$)', 'Situação', 'Projeto', 'Conta']
             st.dataframe(exibir, use_container_width=True, hide_index=True)
-
 # ==========================================
 # CONCILIAÇÃO BANCÁRIA
 # ==========================================
