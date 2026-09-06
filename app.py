@@ -561,7 +561,7 @@ if page == "Resumo do Dia":
 # ==========================================
 # VISÃO EXCEL (CONSOLIDADO)
 # ==========================================
-elif page == "Visão Excel (Consolidado)":
+elif page == "Visão Consolidada":
     st.title("📋 Visão Consolidada")
     st.markdown("Acompanhe o balanço mensal de Entradas e Saídas consolidado por categoria.")
 
