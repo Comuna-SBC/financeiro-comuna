@@ -754,7 +754,8 @@ elif page == "Visão Consolidada":
 # ==========================================
 # ==========================================
 # ==========================================
-# TESOURARIA (CORREÇÃO DE SINTAXE NA ABA 4)
+# ==========================================
+# TESOURARIA (COM ANEXO MANDATÓRIO PARA PAGAR E OPCIONAL PARA RECEBER)
 # ==========================================
 elif page == "Tesouraria":
     st.title("Tesouraria")
@@ -881,6 +882,7 @@ elif page == "Tesouraria":
             pend_pagar = pend[pend['tipo'] == 'Saída'].sort_values('data_vencimento') if 'tipo' in pend.columns else pd.DataFrame()
             pend_receber = pend[pend['tipo'] == 'Entrada'].sort_values('data_vencimento') if 'tipo' in pend.columns else pd.DataFrame()
 
+            # Bloco Superior: Contas a Pagar
             st.subheader("💳 Contas a Pagar")
             if pend_pagar.empty:
                 st.success("Nenhuma conta a pagar pendente. 👍")
@@ -893,13 +895,47 @@ elif page == "Tesouraria":
                     c2.write(fmt_moeda(row['valor']))
                     c3.write(venc.strftime('%d.%m.%Y') if pd.notna(venc) else '—')
                     c4.write(situacao)
-                    if c5.button("✅ Pagar", key=f"pagar_tab_{row['id']}"):
-                        res = sb_request("lancamentos", "PATCH", {"status": "Concluído", "data_pagamento": str(date.today())}, filtros={"id": f"eq.{row['id']}"})
-                        if res is not None:
-                            st.cache_data.clear(); st.rerun()
+                    
+                    row_id = str(row['id'])
+                    is_paying = st.session_state.get(f"paying_{row_id}", False)
+                    
+                    if not is_paying:
+                        if c5.button("✅ Pagar", key=f"pagar_tab_{row_id}"):
+                            st.session_state[f"paying_{row_id}"] = True
+                            st.rerun()
+                    else:
+                        c5.write("Aguardando...")
+
+                    if st.session_state.get(f"paying_{row_id}", False):
+                        with st.container(border=True):
+                            st.markdown(f"📎 **Anexo Obrigatório (Nota Fiscal/Comprovante) para:** {row['descricao']}")
+                            arq_pagar = st.file_uploader("Selecione o arquivo (PDF, PNG, JPG)", type=['png', 'jpg', 'jpeg', 'pdf'], key=f"file_pagar_{row_id}")
+                            
+                            col_b1, col_b2 = st.columns(2)
+                            if col_b1.button("💾 Confirmar Pagamento", key=f"conf_pagar_{row_id}", type="primary"):
+                                if not arq_pagar:
+                                    st.error("⚠️ O anexo da nota fiscal/comprovante é **mandatório** para contas a pagar.")
+                                else:
+                                    with st.spinner("Enviando anexo e registrando pagamento..."):
+                                        url_anexo = comprimir_e_fazer_upload(arq_pagar, pasta="notas")
+                                        res = sb_request("lancamentos", "PATCH", {
+                                            "status": "Concluído", 
+                                            "data_pagamento": str(date.today()),
+                                            "url_anexo": url_anexo
+                                        }, filtros={"id": f"eq.{row_id}"})
+                                        if res is not None:
+                                            st.session_state[f"paying_{row_id}"] = False
+                                            st.cache_data.clear()
+                                            st.success("Pagamento registrado com sucesso!")
+                                            time.sleep(1)
+                                            st.rerun()
+                            if col_b2.button("❌ Cancelar", key=f"canc_pagar_{row_id}"):
+                                st.session_state[f"paying_{row_id}"] = False
+                                st.rerun()
 
             st.markdown("---")
 
+            # Bloco Inferior: Contas a Receber
             st.subheader("💰 Contas a Receber")
             if pend_receber.empty:
                 st.success("Nenhuma conta a receber pendente. 👍")
@@ -912,10 +948,43 @@ elif page == "Tesouraria":
                     c2.write(fmt_moeda(row['valor']))
                     c3.write(venc.strftime('%d.%m.%Y') if pd.notna(venc) else '—')
                     c4.write(situacao)
-                    if c5.button("✅ Receber", key=f"receber_tab_{row['id']}"):
-                        res = sb_request("lancamentos", "PATCH", {"status": "Concluído", "data_pagamento": str(date.today())}, filtros={"id": f"eq.{row['id']}"})
-                        if res is not None:
-                            st.cache_data.clear(); st.rerun()
+                    
+                    row_id = str(row['id'])
+                    is_receiving = st.session_state.get(f"receiving_{row_id}", False)
+                    
+                    if not is_receiving:
+                        if c5.button("✅ Receber", key=f"receber_tab_{row_id}"):
+                            st.session_state[f"receiving_{row_id}"] = True
+                            st.rerun()
+                    else:
+                        c5.write("Aguardando...")
+
+                    if st.session_state.get(f"receiving_{row_id}", False):
+                        with st.container(border=True):
+                            st.markdown(f"📎 **Anexo Opcional para:** {row['descricao']}")
+                            arq_receber = st.file_uploader("Selecione o arquivo se desejar anexar (Opcional)", type=['png', 'jpg', 'jpeg', 'pdf'], key=f"file_receber_{row_id}")
+                            
+                            col_b1, col_b2 = st.columns(2)
+                            if col_b1.button("💾 Confirmar Recebimento", key=f"conf_receber_{row_id}", type="primary"):
+                                with st.spinner("Registrando recebimento..."):
+                                    url_anexo = comprimir_e_fazer_upload(arq_receber, pasta="notas") if arq_receber else None
+                                    payload = {
+                                        "status": "Concluído", 
+                                        "data_pagamento": str(date.today())
+                                    }
+                                    if url_anexo:
+                                        payload["url_anexo"] = url_anexo
+                                        
+                                    res = sb_request("lancamentos", "PATCH", payload, filtros={"id": f"eq.{row_id}"})
+                                    if res is not None:
+                                        st.session_state[f"receiving_{row_id}"] = False
+                                        st.cache_data.clear()
+                                        st.success("Recebimento registrado com sucesso!")
+                                        time.sleep(1)
+                                        st.rerun()
+                            if col_b2.button("❌ Cancelar", key=f"canc_receber_{row_id}"):
+                                st.session_state[f"receiving_{row_id}"] = False
+                                st.rerun()
 
     with tab3:
         df = carregar_lancamentos_df()
@@ -1039,7 +1108,6 @@ elif page == "Tesouraria":
                             e_valor = c_val_dia[0].number_input("Valor Base (R$)", value=float(rec_row['valor'] or 0), format="%.2f", key=f"ed_rec_val_{rec_id}")
                             e_dia = c_val_dia[1].number_input("Dia Fixo de Vencimento", min_value=1, max_value=31, value=int(rec_row.get('dia_vencimento_fixo') or 10), step=1, key=f"ed_rec_dia_{rec_id}")
                             
-                            # Correção aplicada aqui (fechamento correto do colchete/parêntese)
                             cats_r_edit = [c for c in categorias_db if c.get("tipo") == e_tipo]
                             opcoes_cats_r = {c["nome"]: c["id"] for c in cats_r_edit}
                             atual_cat_nome = rec_row.get('categoria_nome')
