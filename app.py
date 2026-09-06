@@ -778,9 +778,9 @@ elif page == "Tesouraria":
             col6, col7 = st.columns(2)
             status_lanc = col6.selectbox("Situação", ["Concluído", "Pendente"])
             
-            data_venc = None
-            if status_lanc == "Pendente":
-                data_venc = col7.date_input("Data de Vencimento", data_comp)
+            # O campo sempre aparece, mas muda de nome baseado no status escolhido
+            label_data_secundaria = "Data de Vencimento" if status_lanc == "Pendente" else "Data de Pagamento"
+            data_venc = col7.date_input(label_data_secundaria, data_comp)
 
             contas_opcoes = {c["nome"]: c["id"] for c in contas_bancarias_db}
             col8, col9 = st.columns(2)
@@ -807,7 +807,8 @@ elif page == "Tesouraria":
                             "tipo": tipo_lanc, 
                             "valor": float(valor),
                             "data_competencia": str(data_comp),
-                            "data_vencimento": str(data_venc) if data_venc else None,
+                            "data_vencimento": str(data_venc),
+                            "data_pagamento": str(data_venc) if status_lanc == "Concluído" else None,
                             "status": status_lanc,
                             "categoria_id": opcoes_cats[categoria_sel],
                             "centro_custo": None if tag == "Nenhum" else tag,
@@ -826,7 +827,8 @@ elif page == "Tesouraria":
                             while proxima_data <= data_limite:
                                 dados_rep = dict(dados_base)
                                 dados_rep["data_competencia"] = str(proxima_data.date())
-                                dados_rep["data_vencimento"] = str(proxima_data.date()) if status_lanc == "Pendente" else None
+                                dados_rep["data_vencimento"] = str(proxima_data.date())
+                                dados_rep["data_pagamento"] = None
                                 dados_rep["status"] = "Pendente"
                                 dados_rep["url_anexo"] = None
                                 sb_request("lancamentos", "POST", dados_rep)
@@ -900,8 +902,9 @@ elif page == "Tesouraria":
                                 n_cat = el4.selectbox("Categoria", list(opcoes_cats_edit.keys()), index=idx_cat, key=f"edit_cat_{id_lanc}")
                                 n_status = el5.selectbox("Situação", ["Concluído", "Pendente"], index=0 if lanc_raw.get('status') == "Concluído" else 1, key=f"edit_status_{id_lanc}")
                                 
-                                dt_venc = lanc_raw.get('data_vencimento')
-                                n_venc = el6.date_input("Vencimento (Se Pendente)", pd.to_datetime(dt_venc).date() if pd.notna(dt_venc) and dt_venc else n_data_comp, key=f"edit_venc_{id_lanc}")
+                                dt_venc_raw = lanc_raw.get('data_vencimento') or lanc_raw.get('data_pagamento')
+                                label_edit_data = "Data de Vencimento" if n_status == "Pendente" else "Data de Pagamento"
+                                n_venc = el6.date_input(label_edit_data, pd.to_datetime(dt_venc_raw).date() if pd.notna(dt_venc_raw) and dt_venc_raw else n_data_comp, key=f"edit_venc_{id_lanc}")
                                 
                                 opcoes_contas = {"Nenhuma": None} | {c['nome']: c['id'] for c in contas_bancarias_db}
                                 nome_conta_atual = next((c['nome'] for c in contas_bancarias_db if str(c['id']) == str(lanc_raw.get('conta_bancaria_id'))), "Nenhuma")
@@ -923,7 +926,8 @@ elif page == "Tesouraria":
                                     carga = {
                                         "descricao": n_desc, "valor": float(n_valor), "data_competencia": str(n_data_comp),
                                         "categoria_id": opcoes_cats_edit[n_cat], "status": n_status,
-                                        "data_vencimento": str(n_venc) if n_status == "Pendente" else None,
+                                        "data_vencimento": str(n_venc),
+                                        "data_pagamento": str(n_venc) if n_status == "Concluído" else None,
                                         "conta_bancaria_id": opcoes_contas[n_conta],
                                         "centro_custo": None if n_proj == "Nenhum" else n_proj
                                     }
@@ -948,7 +952,8 @@ elif page == "Tesouraria":
             exibir['data_competencia'] = exibir['data_competencia'].dt.strftime('%d/%m/%Y')
             exibir.columns = ['Data', 'Tipo', 'Descrição', 'Categoria', 'Valor (R$)', 'Situação', 'Projeto', 'Conta']
             st.dataframe(exibir, use_container_width=True, hide_index=True)
-# ==========================================
+
+
 # ==========================================
 # CONCILIAÇÃO BANCÁRIA (COM IMPORTAÇÃO INTELIGENTE DE OFX)
 # ==========================================
