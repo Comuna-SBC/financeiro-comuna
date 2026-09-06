@@ -1269,6 +1269,7 @@ elif page == "Inscrições e Comprovantes":
                     st.markdown("<hr style='margin:6px 0;border-color:#E2E8F0;'>", unsafe_allow_html=True)
 
 # ==========================================
+# ==========================================
 # METAS E ORÇAMENTOS
 # ==========================================
 elif page == "Metas e Orçamentos":
@@ -1276,19 +1277,30 @@ elif page == "Metas e Orçamentos":
     tab1, tab2 = st.tabs(["🎯 Metas Mensais", "📦 Orçamento por Categoria"])
 
     with tab1:
-        st.markdown("Defina os alvos de arrecadação e o teto de despesas para cada mês.")
-        with st.form("form_meta", clear_on_submit=True):
-            c1, c2, c3, c4 = st.columns(4)
-            ano_meta = c1.number_input("Ano", min_value=2020, max_value=2100, value=date.today().year)
-            mes_meta = c2.selectbox("Mês", list(range(1, 13)), format_func=lambda m: MESES_PT[m-1], index=date.today().month-1)
-            meta_entradas = c3.number_input("Meta de Entradas (R$)", min_value=0.0, format="%.2f")
-            meta_saidas = c4.number_input("Teto de Saídas (R$)", min_value=0.0, format="%.2f")
-            if st.form_submit_button("Salvar Meta", use_container_width=True):
-                upsert_meta(int(ano_meta), int(mes_meta), float(meta_entradas), float(meta_saidas))
-                st.success("Meta salva!")
-                st.rerun()
+        st.markdown("Defina os alvos de arrecadação e o teto de despesas para cada mês. (Salvar um mês existente irá atualizá-lo).")
+        col_f1, col_f2 = st.columns([2, 1])
+        
+        with col_f1:
+            with st.form("form_meta", clear_on_submit=True):
+                c1, c2, c3, c4 = st.columns(4)
+                ano_meta = c1.number_input("Ano", min_value=2020, max_value=2100, value=date.today().year)
+                mes_meta = c2.selectbox("Mês", list(range(1, 13)), format_func=lambda m: MESES_PT[m-1], index=date.today().month-1)
+                meta_entradas = c3.number_input("Meta Entradas (R$)", min_value=0.0, format="%.2f")
+                meta_saidas = c4.number_input("Teto Saídas (R$)", min_value=0.0, format="%.2f")
+                if st.form_submit_button("Salvar Meta", use_container_width=True):
+                    upsert_meta(int(ano_meta), int(mes_meta), float(meta_entradas), float(meta_saidas))
+                    st.success("Meta salva!"); st.rerun()
+                    
+        with col_f2:
+            metas_lista = carregar("metas_mensais")
+            with st.expander("🗑️ Excluir Meta"):
+                if metas_lista:
+                    opcoes_metas = {f"{m['ano']} - {MESES_PT[int(m['mes'])-1]}": m['id'] for m in metas_lista}
+                    meta_del = st.selectbox("Selecione a Meta", list(opcoes_metas.keys()))
+                    if st.button("Excluir Meta Selecionada", use_container_width=True):
+                        sb_request("metas_mensais", "DELETE", filtros={"id": f"eq.{opcoes_metas[meta_del]}"})
+                        st.cache_data.clear(); st.success("Excluída!"); time.sleep(1); st.rerun()
 
-        metas_lista = carregar("metas_mensais")
         if metas_lista:
             df_metas_view = pd.DataFrame(metas_lista)
             df_metas_view['Mês'] = df_metas_view['mes'].apply(lambda m: MESES_PT[int(m)-1])
@@ -1299,20 +1311,31 @@ elif page == "Metas e Orçamentos":
     with tab2:
         st.markdown("Defina o teto de gastos anual por categoria.")
         cats_saida = [c for c in categorias_db if c['tipo'] == 'Saída']
-        with st.form("form_orcamento", clear_on_submit=True):
-            c1, c2, c3 = st.columns(3)
-            ano_orc = c1.number_input("Ano", min_value=2020, max_value=2100, value=date.today().year, key="ano_orc")
-            cat_orc = c2.selectbox("Categoria", [c['nome'] for c in cats_saida])
-            valor_orc = c3.number_input("Valor Orçado (R$)", min_value=0.0, format="%.2f")
-            if st.form_submit_button("Salvar Orçamento", use_container_width=True):
-                cat_id = next(c['id'] for c in cats_saida if c['nome'] == cat_orc)
-                upsert_orcamento(int(ano_orc), cat_id, float(valor_orc))
-                st.success("Orçamento salvo!")
-                st.rerun()
+        col_o1, col_o2 = st.columns([2, 1])
+        
+        with col_o1:
+            with st.form("form_orcamento", clear_on_submit=True):
+                c1, c2, c3 = st.columns(3)
+                ano_orc = c1.number_input("Ano", min_value=2020, max_value=2100, value=date.today().year, key="ano_orc")
+                cat_orc = c2.selectbox("Categoria", [c['nome'] for c in cats_saida])
+                valor_orc = c3.number_input("Valor Orçado (R$)", min_value=0.0, format="%.2f")
+                if st.form_submit_button("Salvar Orçamento", use_container_width=True):
+                    cat_id = next(c['id'] for c in cats_saida if c['nome'] == cat_orc)
+                    upsert_orcamento(int(ano_orc), cat_id, float(valor_orc))
+                    st.success("Orçamento salvo!"); st.rerun()
 
-        orcamentos_lista = carregar("orcamentos_categoria")
+        with col_o2:
+            orcamentos_lista = carregar("orcamentos_categoria")
+            with st.expander("🗑️ Excluir Orçamento"):
+                if orcamentos_lista:
+                    map_cat_nome_all = {str(c['id']): c['nome'] for c in categorias_db}
+                    opcoes_orc = {f"{o['ano']} - {map_cat_nome_all.get(str(o['categoria_id']))}": o['id'] for o in orcamentos_lista}
+                    orc_del = st.selectbox("Selecione o Orçamento", list(opcoes_orc.keys()))
+                    if st.button("Excluir Orçamento Selecionado", use_container_width=True):
+                        sb_request("orcamentos_categoria", "DELETE", filtros={"id": f"eq.{opcoes_orc[orc_del]}"})
+                        st.cache_data.clear(); st.success("Excluído!"); time.sleep(1); st.rerun()
+
         if orcamentos_lista:
-            map_cat_nome_all = {str(c['id']): c['nome'] for c in categorias_db}
             df_orc_view = pd.DataFrame(orcamentos_lista)
             df_orc_view['Categoria'] = df_orc_view['categoria_id'].astype(str).map(map_cat_nome_all)
             df_orc_view = df_orc_view[['ano', 'Categoria', 'valor_orcado']]
