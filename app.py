@@ -10,16 +10,23 @@ import plotly.graph_objects as go
 import requests
 
 # ==========================================
-# CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM
+# CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM (CLARO / FINTECH)
 # ==========================================
-st.set_page_config(page_title="Financeiro COMUNA", page_icon="⛪", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="Financeiro COMUNA", 
+    page_icon="⛪", 
+    layout="wide", 
+    initial_sidebar_state="expanded"
+)
 
-MESES_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho",
-            "Agosto","Setembro","Outubro","Novembro","Dezembro"]
+MESES_PT = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+]
 
 st.markdown("""
     <style>
-    @import url('[fonts.googleapis.com](https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap)');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     html, body, [class*="css"] { font-family: 'Plus Jakarta Sans', sans-serif; }
 
     .main { background-color: #F8FAFC; color: #1E293B; padding: 2rem; }
@@ -146,6 +153,8 @@ def carregar_lancamentos_df():
     df['data_vencimento'] = pd.to_datetime(df.get('data_vencimento'), errors='coerce') if 'data_vencimento' in df.columns else pd.NaT
     df['conciliado'] = df['conciliado'].fillna(False) if 'conciliado' in df.columns else False
     df['mes_ano'] = df['data_competencia'].dt.strftime('%Y-%m')
+    df['mes_num'] = df['data_competencia'].dt.month
+    df['ano_num'] = df['data_competencia'].dt.year
 
     cats = carregar_categorias()
     map_cat = {str(c['id']): c['nome'] for c in cats}
@@ -178,7 +187,6 @@ def cpf_valido(cpf):
         if digito != int(cpf[i]):
             return False
     return True
-
 
 def comprimir_e_fazer_upload(arquivo_upload, pasta="notas"):
     if arquivo_upload is None:
@@ -235,7 +243,7 @@ def upsert_orcamento(ano, categoria_id, valor):
     st.cache_data.clear()
 
 # ==========================================
-# PÁGINA PÚBLICA DE INSCRIÇÃO (sem login)
+# PÁGINA PÚBLICA DE INSCRIÇÃO
 # ==========================================
 def pagina_inscricao_publica():
     st.markdown("<h1 style='text-align:center;'>⛪ Inscrição em Evento</h1>", unsafe_allow_html=True)
@@ -320,7 +328,6 @@ def pagina_inscricao_publica():
                     else:
                         st.error("Não foi possível criar a inscrição. Se você já tem uma, informe o CPF acima.")
 
-
 def _painel_pagamentos_participante(inscricao, evento):
     valor_total = float(inscricao.get("valor_total") or 0)
     valor_pago = float(inscricao.get("valor_pago") or 0)
@@ -373,8 +380,6 @@ def _painel_pagamentos_participante(inscricao, evento):
                 st.success("✅ Comprovante enviado! A tesouraria irá validar em breve.")
                 st.rerun()
 
-
-# Verifica se é acesso público (link de inscrição) ANTES de montar o painel interno
 qp = st.query_params
 if qp.get("pagina") == "inscricao":
     st.markdown("<style>[data-testid='stSidebar'], [data-testid='collapsedControl'] {display:none;}</style>", unsafe_allow_html=True)
@@ -382,7 +387,7 @@ if qp.get("pagina") == "inscricao":
     st.stop()
 
 # ==========================================
-# DADOS GLOBAIS DO PAINEL INTERNO
+# MENU LATERAL INTERNO
 # ==========================================
 categorias_db = carregar_categorias()
 eventos_db = carregar("eventos")
@@ -406,6 +411,7 @@ secao("OPERACIONAL")
 nav_button("Resumo do Dia", "🏠")
 nav_button("Tesouraria", "💰")
 nav_button("Conciliação Bancária", "🏦")
+nav_button("Visão Excel (Consolidado)", "📋")
 
 secao("GESTÃO DE EVENTOS")
 nav_button("Painel de Eventos", "🎫")
@@ -420,326 +426,220 @@ nav_button("Analytics Financeiro", "📊")
 nav_button("Exportar Contabilidade", "📤")
 
 st.sidebar.markdown("---")
-st.sidebar.caption("Gestão Financeira • v4.0")
+st.sidebar.caption("Gestão Financeira • v4.1")
 
 page = st.session_state.page
 
-# ==========================================
 # ==========================================
 # RESUMO DO DIA
 # ==========================================
 if page == "Resumo do Dia":
     st.title("Resumo do Dia")
-    st.markdown(
-        f"Hoje é {date.today().strftime('%d/%m/%Y')}. "
-        "Aqui está o que precisa da sua atenção."
-    )
+    st.markdown(f"Hoje é {date.today().strftime('%d/%m/%Y')}. Aqui está o que precisa da sua atenção.")
 
-    # --------------------------------------
-    # CARREGAMENTO DOS DADOS
-    # --------------------------------------
     df = carregar_lancamentos_df()
     inscricoes_resumo = carregar("inscricoes")
     pagamentos_resumo = carregar("inscricao_pagamentos")
     eventos_resumo = carregar("eventos")
 
     hoje = pd.Timestamp(date.today())
-
-    # --------------------------------------
-    # SALDO CONSOLIDADO
-    # --------------------------------------
-    saldo_consolidado = sum(
-        float(conta.get("saldo_inicial") or 0)
-        for conta in contas_bancarias_db
-    )
+    saldo_consolidado = sum(float(conta.get("saldo_inicial") or 0) for conta in contas_bancarias_db)
 
     if not df.empty:
-        lancamentos_concluidos = df[
-            df["status"] == "Concluído"
-        ]
+        lancamentos_concluidos = df[df["status"] == "Concluído"]
+        total_entradas = lancamentos_concluidos[lancamentos_concluidos["tipo"] == "Entrada"]["valor"].sum()
+        total_saidas = lancamentos_concluidos[lancamentos_concluidos["tipo"] == "Saída"]["valor"].sum()
+        saldo_consolidado += total_entradas - total_saidas
 
-        total_entradas = lancamentos_concluidos[
-            lancamentos_concluidos["tipo"] == "Entrada"
-        ]["valor"].sum()
+    contas_pendentes = df[df["status"] == "Pendente"].copy() if not df.empty else pd.DataFrame()
+    contas_hoje = contas_pendentes[contas_pendentes["data_vencimento"] == hoje].copy() if not contas_pendentes.empty and "data_vencimento" in contas_pendentes.columns else pd.DataFrame()
+    contas_atrasadas = contas_pendentes[contas_pendentes["data_vencimento"] < hoje].copy() if not contas_pendentes.empty and "data_vencimento" in contas_pendentes.columns else pd.DataFrame()
 
-        total_saidas = lancamentos_concluidos[
-            lancamentos_concluidos["tipo"] == "Saída"
-        ]["valor"].sum()
+    pagamentos_pendentes = [p for p in pagamentos_resumo if p.get("status") == "Pendente"]
+    inscricoes_por_id = {str(i.get("id")): i for i in inscricoes_resumo}
+    eventos_por_id = {str(e.get("id")): e for e in eventos_resumo}
 
-        saldo_consolidado += total_entradas
-        saldo_consolidado -= total_saidas
-
-    # --------------------------------------
-    # CONTAS PENDENTES
-    # --------------------------------------
-    if not df.empty:
-        contas_pendentes = df[
-            df["status"] == "Pendente"
-        ].copy()
-    else:
-        contas_pendentes = pd.DataFrame()
-
-    if (
-        not contas_pendentes.empty
-        and "data_vencimento" in contas_pendentes.columns
-    ):
-        contas_hoje = contas_pendentes[
-            contas_pendentes["data_vencimento"] == hoje
-        ].copy()
-
-        contas_atrasadas = contas_pendentes[
-            contas_pendentes["data_vencimento"] < hoje
-        ].copy()
-    else:
-        contas_hoje = pd.DataFrame()
-        contas_atrasadas = pd.DataFrame()
-
-    # --------------------------------------
-    # COMPROVANTES PENDENTES DOS EVENTOS
-    # --------------------------------------
-    pagamentos_pendentes = [
-        pagamento
-        for pagamento in pagamentos_resumo
-        if pagamento.get("status") == "Pendente"
-    ]
-
-    # Mapas usados para identificar participante e evento
-    inscricoes_por_id = {
-        str(inscricao.get("id")): inscricao
-        for inscricao in inscricoes_resumo
-    }
-
-    eventos_por_id = {
-        str(evento.get("id")): evento
-        for evento in eventos_resumo
-    }
-
-    # --------------------------------------
-    # MÉTRICAS PRINCIPAIS
-    # --------------------------------------
     col1, col2, col3, col4 = st.columns(4)
-
-    col1.metric(
-        "Saldo Consolidado",
-        fmt_moeda(saldo_consolidado)
-    )
-
-    col2.metric(
-        "A Pagar Hoje",
-        str(len(contas_hoje))
-    )
-
-    col3.metric(
-        "Contas Atrasadas",
-        str(len(contas_atrasadas))
-    )
-
-    col4.metric(
-        "Comprovantes para Validar",
-        str(len(pagamentos_pendentes))
-    )
+    col1.metric("Saldo Consolidado", fmt_moeda(saldo_consolidado))
+    col2.metric("A Pagar Hoje", str(len(contas_hoje)))
+    col3.metric("Contas Atrasadas", str(len(contas_atrasadas)))
+    col4.metric("Comprovantes para Validar", str(len(pagamentos_pendentes)))
 
     st.markdown("---")
-
     coluna_contas, coluna_comprovantes = st.columns(2)
 
-    # --------------------------------------
-    # COLUNA DE CONTAS A PAGAR
-    # --------------------------------------
     with coluna_contas:
         st.subheader("💳 Contas para pagar")
-
         listas_contas = []
-
         if not contas_atrasadas.empty:
-            contas_atrasadas = contas_atrasadas.copy()
             contas_atrasadas["ordem_resumo"] = 1
             listas_contas.append(contas_atrasadas)
-
         if not contas_hoje.empty:
-            contas_hoje = contas_hoje.copy()
             contas_hoje["ordem_resumo"] = 2
             listas_contas.append(contas_hoje)
 
-        if listas_contas:
-            contas_para_mostrar = pd.concat(
-                listas_contas,
-                ignore_index=True
-            )
-
-            contas_para_mostrar = contas_para_mostrar.sort_values(
-                by=[
-                    "ordem_resumo",
-                    "data_vencimento"
-                ]
-            )
-        else:
-            contas_para_mostrar = pd.DataFrame()
+        contas_para_mostrar = pd.concat(listas_contas, ignore_index=True).sort_values(by=["ordem_resumo", "data_vencimento"]) if listas_contas else pd.DataFrame()
 
         if contas_para_mostrar.empty:
-            st.success(
-                "Nenhuma conta atrasada ou com vencimento hoje."
-            )
-
+            st.success("Nenhuma conta atrasada ou com vencimento hoje.")
         else:
             for _, lancamento in contas_para_mostrar.iterrows():
                 vencimento = lancamento.get("data_vencimento")
+                vencimento_formatado = vencimento.strftime("%d/%m/%Y") if pd.notna(vencimento) else "Sem vencimento"
+                situacao = "🔴 Atrasada" if pd.notna(vencimento) and vencimento < hoje else "🟡 Vence hoje"
 
-                if pd.notna(vencimento):
-                    vencimento_formatado = vencimento.strftime(
-                        "%d/%m/%Y"
-                    )
-                else:
-                    vencimento_formatado = "Sem vencimento"
-
-                if (
-                    pd.notna(vencimento)
-                    and vencimento < hoje
-                ):
-                    situacao = "🔴 Atrasada"
-                else:
-                    situacao = "🟡 Vence hoje"
-
-                linha1, linha2, linha3 = st.columns(
-                    [3, 1.5, 1.3]
-                )
-
+                linha1, linha2, linha3 = st.columns([3, 1.5, 1.3])
                 with linha1:
-                    st.write(
-                        f"**{lancamento.get('descricao', 'Sem descrição')}**"
-                    )
-                    st.caption(
-                        f"{situacao} • {vencimento_formatado}"
-                    )
-
+                    st.write(f"**{lancamento.get('descricao', 'Sem descrição')}**")
+                    st.caption(f"{situacao} • {vencimento_formatado}")
                 with linha2:
-                    st.write(
-                        fmt_moeda(lancamento.get("valor"))
-                    )
-
+                    st.write(fmt_moeda(lancamento.get("valor")))
                 with linha3:
-                    if st.button(
-                        "✅ Marcar pago",
-                        key=f"resumo_pagar_{lancamento['id']}",
-                        use_container_width=True
-                    ):
-                        resultado = sb_request(
-                            "lancamentos",
-                            "PATCH",
-                            {
-                                "status": "Concluído",
-                                "data_pagamento": str(date.today())
-                            },
-                            filtros={
-                                "id": f"eq.{lancamento['id']}"
-                            }
-                        )
-
+                    if st.button("✅ Marcar pago", key=f"resumo_pagar_{lancamento['id']}", use_container_width=True):
+                        resultado = sb_request("lancamentos", "PATCH", {"status": "Concluído", "data_pagamento": str(date.today())}, filtros={"id": f"eq.{lancamento['id']}"})
                         if resultado is not None:
                             st.cache_data.clear()
                             st.rerun()
                         else:
-                            st.error(
-                                "Não foi possível atualizar a conta."
-                            )
+                            st.error("Não foi possível atualizar a conta.")
+                st.markdown("<hr style='margin:6px 0;border:none;border-top:1px solid #E2E8F0;'>", unsafe_allow_html=True)
 
-                st.markdown(
-                    "<hr style='"
-                    "margin:6px 0;"
-                    "border:none;"
-                    "border-top:1px solid #E2E8F0;"
-                    "'>",
-                    unsafe_allow_html=True
-                )
-
-    # --------------------------------------
-    # COLUNA DE COMPROVANTES DOS EVENTOS
-    # --------------------------------------
     with coluna_comprovantes:
-        st.subheader(
-            "🎫 Comprovantes aguardando aprovação"
-        )
-
+        st.subheader("🎫 Comprovantes aguardando aprovação")
         if not pagamentos_pendentes:
-            st.success(
-                "Nenhum comprovante pendente."
-            )
-
+            st.success("Nenhum comprovante pendente.")
         else:
-            pagamentos_ordenados = sorted(
-                pagamentos_pendentes,
-                key=lambda pagamento: pagamento.get(
-                    "data_envio",
-                    ""
-                )
-            )
-
-            # Exibe no máximo os 6 primeiros no resumo
+            pagamentos_ordenados = sorted(pagamentos_pendentes, key=lambda p: p.get("data_envio", ""))
             for pagamento in pagamentos_ordenados[:6]:
-                inscricao = inscricoes_por_id.get(
-                    str(pagamento.get("inscricao_id")),
-                    {}
-                )
-
-                evento = eventos_por_id.get(
-                    str(inscricao.get("evento_id")),
-                    {}
-                )
-
-                nome_participante = inscricao.get(
-                    "nome_participante",
-                    "Participante não identificado"
-                )
-
-                nome_evento = evento.get(
-                    "nome",
-                    "Evento não identificado"
-                )
-
-                numero_parcela = pagamento.get(
-                    "numero_parcela",
-                    1
-                )
-
-                st.write(
-                    f"**{nome_participante}** - "
-                    f"Parcela {numero_parcela}"
-                )
-
-                st.caption(
-                    f"{nome_evento} • "
-                    f"{fmt_moeda(pagamento.get('valor'))}"
-                )
-
-                st.markdown(
-                    "<hr style='"
-                    "margin:6px 0;"
-                    "border:none;"
-                    "border-top:1px solid #E2E8F0;"
-                    "'>",
-                    unsafe_allow_html=True
-                )
-
+                insc = inscricoes_por_id.get(str(pagamento.get("inscricao_id")), {})
+                evento = eventos_por_id.get(str(insc.get("evento_id")), {})
+                st.write(f"**{insc.get('nome_participante', 'Participante')}** - Parcela {pagamento.get('numero_parcela', 1)}")
+                st.caption(f"{evento.get('nome', 'Evento')} • {fmt_moeda(pagamento.get('valor'))}")
+                st.markdown("<hr style='margin:6px 0;border:none;border-top:1px solid #E2E8F0;'>", unsafe_allow_html=True)
             if len(pagamentos_pendentes) > 6:
-                quantidade_restante = (
-                    len(pagamentos_pendentes) - 6
-                )
-
-                st.caption(
-                    f"Existem mais {quantidade_restante} "
-                    "comprovantes aguardando validação."
-                )
-
-            if st.button(
-                "Ir para Inscrições e Comprovantes →",
-                key="resumo_ir_comprovantes",
-                use_container_width=True
-            ):
-                st.session_state.page = (
-                    "Inscrições e Comprovantes"
-                )
+                st.caption(f"Existem mais {len(pagamentos_pendentes) - 6} comprovantes aguardando validação.")
+            if st.button("Ir para Inscrições e Comprovantes →", key="resumo_ir_comprovantes", use_container_width=True):
+                st.session_state.page = "Inscrições e Comprovantes"
                 st.rerun()
 
+# ==========================================
+# VISÃO EXCEL (CONSOLIDADO - NOVO!)
+# ==========================================
+elif page == "Visão Excel (Consolidado)":
+    st.title("📋 Visão Excel (Consolidado)")
+    st.markdown("Esta aba espelha o formato de planilhas tradicionais (Entradas, Saídas e Consolidado Mensal), calculada em tempo real com base em todos os lançamentos do sistema.")
+
+    df = carregar_lancamentos_df()
+    ano_atual = date.today().year
+    
+    anos_disp = sorted(df['data_competencia'].dt.year.dropna().unique().astype(int), reverse=True) if not df.empty else [ano_atual]
+    if ano_atual not in anos_disp:
+        anos_disp.append(ano_atual)
+        anos_disp = sorted(anos_disp, reverse=True)
+
+    col_a1, col_a2 = st.columns([1, 3])
+    ano_sel = col_a1.selectbox("Ano de Referência", anos_disp)
+
+    df_ano = df[df['data_competencia'].dt.year == ano_sel].copy() if not df.empty else pd.DataFrame()
+
+    tab_ex1, tab_ex2, tab_ex3 = st.tabs(["📥 Entradas por Categoria", "📤 Saídas por Categoria", "📊 Consolidado Bancário e Geral"])
+
+    with tab_ex1:
+        st.subheader(f"Entradas — Ano {ano_sel}")
+        cats_entrada = [c['nome'] for c in categorias_db if c['tipo'] == 'Entrada']
+        
+        if not df_ano.empty:
+            df_ent = df_ano[(df_ano['tipo'] == 'Entrada') & (df_ano['status'] == 'Concluído')]
+            pivot_ent = pd.pivot_table(
+                df_ent,
+                values='valor',
+                index='categoria_nome',
+                columns='mes_num',
+                aggfunc='sum',
+                fill_value=0.0
+            )
+        else:
+            pivot_ent = pd.DataFrame()
+
+        # Garante todas as categorias de entrada e os 12 meses
+        for cat in cats_entrada:
+            if cat not in pivot_ent.index:
+                pivot_ent.loc[cat] = 0.0
+        for m in range(1, 13):
+            if m not in pivot_ent.columns:
+                pivot_ent[m] = 0.0
+
+        pivot_ent = pivot_ent[[m for m in range(1, 13)]]
+        pivot_ent.columns = MESES_PT
+        pivot_ent['TOTAL ANUAL'] = pivot_ent.sum(axis=1)
+        
+        st.dataframe(pivot_ent.applymap(fmt_moeda), use_container_width=True)
+
+    with tab_ex2:
+        st.subheader(f"Saídas — Ano {ano_sel}")
+        cats_saida = [c['nome'] for c in categorias_db if c['tipo'] == 'Saída']
+        
+        if not df_ano.empty:
+            df_sai = df_ano[(df_ano['tipo'] == 'Saída') & (df_ano['status'] == 'Concluído')]
+            pivot_sai = pd.pivot_table(
+                df_sai,
+                values='valor',
+                index='categoria_nome',
+                columns='mes_num',
+                aggfunc='sum',
+                fill_value=0.0
+            )
+        else:
+            pivot_sai = pd.DataFrame()
+
+        for cat in cats_saida:
+            if cat not in pivot_sai.index:
+                pivot_sai.loc[cat] = 0.0
+        for m in range(1, 13):
+            if m not in pivot_sai.columns:
+                pivot_sai[m] = 0.0
+
+        pivot_sai = pivot_sai[[m for m in range(1, 13)]]
+        pivot_sai.columns = MESES_PT
+        pivot_sai['TOTAL ANUAL'] = pivot_sai.sum(axis=1)
+
+        st.dataframe(pivot_sai.applymap(fmt_moeda), use_container_width=True)
+
+    with tab_ex3:
+        st.subheader(f"Consolidado Geral — Ano {ano_sel}")
+        
+        # Monta sumário mensal de Entradas, Saídas e Saldo
+        resumo_geral = pd.DataFrame(index=MESES_PT)
+        tot_ent = []
+        tot_sai = []
+        
+        for m_idx, m_nome in enumerate(MESES_PT, 1):
+            val_e = df_ano[(df_ano['mes_num'] == m_idx) & (df_ano['tipo'] == 'Entrada') & (df_ano['status'] == 'Concluído')]['valor'].sum() if not df_ano.empty else 0.0
+            val_s = df_ano[(df_ano['mes_num'] == m_idx) & (df_ano['tipo'] == 'Saída') & (df_ano['status'] == 'Concluído')]['valor'].sum() if not df_ano.empty else 0.0
+            tot_ent.append(val_e)
+            tot_sai.append(val_s)
+            
+        resumo_geral['Total Entradas'] = tot_ent
+        resumo_geral['Total Saídas'] = tot_sai
+        resumo_geral['Resultado do Mês'] = resumo_geral['Total Entradas'] - resumo_geral['Total Saídas']
+        
+        saldo_acum = sum(float(c.get("saldo_inicial") or 0) for c in contas_bancarias_db)
+        saldos_mes = []
+        for res in resumo_geral['Resultado do Mês']:
+            saldo_acum += res
+            saldos_mes.append(saldo_acum)
+        resumo_geral['Saldo em Caixa Acumulado'] = saldos_mes
+
+        st.dataframe(resumo_geral.applymap(fmt_moeda), use_container_width=True)
+
+        st.markdown("#### Saldo Inicial por Conta Bancária")
+        if contas_bancarias_db:
+            df_contas_view = pd.DataFrame(contas_bancarias_db)[['nome', 'tipo', 'saldo_inicial']]
+            df_contas_view.columns = ['Conta Bancária', 'Tipo', 'Saldo Inicial (R$)']
+            df_contas_view['Saldo Inicial (R$)'] = df_contas_view['Saldo Inicial (R$)'].apply(fmt_moeda)
+            st.dataframe(df_contas_view, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhuma conta bancária cadastrada.")
 
 # ==========================================
 # TESOURARIA
@@ -921,350 +821,111 @@ elif page == "Conciliação Bancária":
 # ==========================================
 # PAINEL DE EVENTOS
 # ==========================================
-# ==========================================
-# PAINEL DE EVENTOS
-# ==========================================
 elif page == "Painel de Eventos":
     st.title("Painel de Eventos")
-    st.markdown(
-        "Cadastre acampamentos, retiros e conferências para abrir inscrições."
-    )
+    st.markdown("Cadastre acampamentos, retiros e conferências para abrir inscrições.")
 
-    # --------------------------------------
-    # FORMULÁRIO PARA CRIAR UM NOVO EVENTO
-    # --------------------------------------
-    with st.expander(
-        "➕ Criar Novo Evento",
-        expanded=len(eventos_db) == 0
-    ):
+    with st.expander("➕ Criar Novo Evento", expanded=len(eventos_db) == 0):
         with st.form("form_evento", clear_on_submit=True):
-            nome_ev = st.text_input(
-                "Nome do Evento",
-                placeholder="Ex.: Acampamento de Adolescentes 2026"
-            )
-
+            nome_ev = st.text_input("Nome do Evento", placeholder="Ex.: Acampamento de Adolescentes 2026")
             col1, col2, col3 = st.columns(3)
-
-            data_ev = col1.date_input(
-                "Data do Evento",
-                date.today()
-            )
-
-            valor_ev = col2.number_input(
-                "Valor Total da Inscrição (R$)",
-                min_value=0.0,
-                step=10.0,
-                format="%.2f"
-            )
-
-            vagas_ev = col3.number_input(
-                "Total de Vagas",
-                min_value=0,
-                step=1
-            )
-
-            chave_pix_ev = st.text_input(
-                "Chave Pix para recebimento"
-            )
-
-            descricao_ev = st.text_area(
-                "Descrição e orientações do evento",
-                placeholder=(
-                    "Ex.: Local, horários, o que levar e informações "
-                    "importantes para os participantes."
-                )
-            )
-
+            data_ev = col1.date_input("Data do Evento", date.today())
+            valor_ev = col2.number_input("Valor Total da Inscrição (R$)", min_value=0.0, step=10.0, format="%.2f")
+            vagas_ev = col3.number_input("Total de Vagas", min_value=0, step=1)
+            chave_pix_ev = st.text_input("Chave Pix para recebimento")
+            descricao_ev = st.text_area("Descrição e orientações do evento", placeholder="Ex.: Local, horários, o que levar.")
             col4, col5 = st.columns(2)
+            permite_parc = col4.checkbox("Permitir pagamento parcelado")
+            num_parc = col5.number_input("Número máximo de parcelas", min_value=1, max_value=12, value=1, step=1, disabled=not permite_parc)
 
-            permite_parc = col4.checkbox(
-                "Permitir pagamento parcelado"
-            )
-
-            num_parc = col5.number_input(
-                "Número máximo de parcelas",
-                min_value=1,
-                max_value=12,
-                value=1,
-                step=1,
-                disabled=not permite_parc
-            )
-
-            criar_evento = st.form_submit_button(
-                "Criar Evento",
-                use_container_width=True
-            )
-
+            criar_evento = st.form_submit_button("Criar Evento", use_container_width=True)
             if criar_evento:
                 if not nome_ev.strip():
                     st.warning("Informe o nome do evento.")
-
                 elif valor_ev <= 0:
-                    st.warning(
-                        "Informe um valor de inscrição maior que zero."
-                    )
-
+                    st.warning("Informe um valor de inscrição maior que zero.")
                 elif vagas_ev <= 0:
-                    st.warning(
-                        "Informe uma quantidade de vagas maior que zero."
-                    )
-
+                    st.warning("Informe uma quantidade de vagas maior que zero.")
                 elif not chave_pix_ev.strip():
                     st.warning("Informe a chave Pix do evento.")
-
                 else:
-                    resultado = sb_request(
-                        "eventos",
-                        "POST",
-                        {
-                            "nome": nome_ev.strip(),
-                            "descricao": descricao_ev.strip() or None,
-                            "data_evento": str(data_ev),
-                            "valor_inscricao": float(valor_ev),
-                            "vagas_total": int(vagas_ev),
-                            "chave_pix": chave_pix_ev.strip(),
-                            "centro_custo": nome_ev.strip(),
-                            "status": "Aberto",
-                            "permite_parcelamento": bool(permite_parc),
-                            "numero_parcelas": (
-                                int(num_parc) if permite_parc else 1
-                            )
-                        }
-                    )
-
+                    resultado = sb_request("eventos", "POST", {
+                        "nome": nome_ev.strip(),
+                        "descricao": descricao_ev.strip() or None,
+                        "data_evento": str(data_ev),
+                        "valor_inscricao": float(valor_ev),
+                        "vagas_total": int(vagas_ev),
+                        "chave_pix": chave_pix_ev.strip(),
+                        "centro_custo": nome_ev.strip(),
+                        "status": "Aberto",
+                        "permite_parcelamento": bool(permite_parc),
+                        "numero_parcelas": int(num_parc) if permite_parc else 1
+                    })
                     if resultado:
                         st.cache_data.clear()
-                        st.success(
-                            "Evento criado com sucesso! "
-                            "O link de inscrição já está disponível abaixo."
-                        )
+                        st.success("Evento criado com sucesso!")
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error(
-                            "Não foi possível criar o evento. "
-                            "Confira se o SQL do parcelamento foi executado "
-                            "no Supabase."
-                        )
+                        st.error("Não foi possível criar o evento.")
 
-    # Recarrega os eventos depois do formulário
     eventos_atualizados = carregar("eventos")
-
     st.markdown("---")
     st.subheader("Eventos Cadastrados")
 
     if not eventos_atualizados:
         st.info("Nenhum evento cadastrado ainda.")
-
     else:
         inscricoes_all = carregar("inscricoes")
         pagamentos_all = carregar("inscricao_pagamentos")
 
         for ev in eventos_atualizados:
-            # Inscrições pertencentes ao evento atual
-            inscricoes_evento = [
-                inscricao
-                for inscricao in inscricoes_all
-                if str(inscricao.get("evento_id")) == str(ev.get("id"))
-            ]
+            inscricoes_evento = [i for i in inscricoes_all if str(i.get("evento_id")) == str(ev.get("id"))]
+            ids_inscricoes_evento = {str(i.get("id")) for i in inscricoes_evento}
+            pagamentos_evento = [p for p in pagamentos_all if str(p.get("inscricao_id")) in ids_inscricoes_evento]
+            pagamentos_pendentes = [p for p in pagamentos_evento if p.get("status") == "Pendente"]
+            inscricoes_quitadas = [i for i in inscricoes_evento if i.get("status_pagamento") == "Completo"]
+            inscricoes_parciais = [i for i in inscricoes_evento if i.get("status_pagamento") == "Parcial"]
 
-            ids_inscricoes_evento = {
-                str(inscricao.get("id"))
-                for inscricao in inscricoes_evento
-            }
-
-            # Comprovantes pertencentes às inscrições deste evento
-            pagamentos_evento = [
-                pagamento
-                for pagamento in pagamentos_all
-                if str(pagamento.get("inscricao_id"))
-                in ids_inscricoes_evento
-            ]
-
-            pagamentos_pendentes = [
-                pagamento
-                for pagamento in pagamentos_evento
-                if pagamento.get("status") == "Pendente"
-            ]
-
-            inscricoes_quitadas = [
-                inscricao
-                for inscricao in inscricoes_evento
-                if inscricao.get("status_pagamento") == "Completo"
-            ]
-
-            inscricoes_parciais = [
-                inscricao
-                for inscricao in inscricoes_evento
-                if inscricao.get("status_pagamento") == "Parcial"
-            ]
-
-            total_arrecadado = sum(
-                float(inscricao.get("valor_pago") or 0)
-                for inscricao in inscricoes_evento
-            )
-
-            total_previsto = sum(
-                float(inscricao.get("valor_total") or 0)
-                for inscricao in inscricoes_evento
-            )
-
-            saldo_a_receber = max(
-                total_previsto - total_arrecadado,
-                0
-            )
-
+            total_arrecadado = sum(float(i.get("valor_pago") or 0) for i in inscricoes_evento)
+            total_previsto = sum(float(i.get("valor_total") or 0) for i in inscricoes_evento)
+            saldo_a_receber = max(total_previsto - total_arrecadado, 0)
             total_inscritos = len(inscricoes_evento)
             vagas_total = int(ev.get("vagas_total") or 0)
             vagas_restantes = max(vagas_total - total_inscritos, 0)
-
             status_evento = ev.get("status") or "Aberto"
+            cor_status = "#059669" if status_evento == "Aberto" else "#94A3B8"
+            parcelamento_texto = f"Pagamento em até {int(ev.get('numero_parcelas') or 1)}x" if ev.get("permite_parcelamento") else "Pagamento à vista"
 
-            cor_status = (
-                "#059669"
-                if status_evento == "Aberto"
-                else "#94A3B8"
-            )
+            st.markdown(f"""
+            <div style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:14px;padding:20px;margin-bottom:12px;">
+                <h4 style="margin-top:0;">{ev.get('nome', 'Evento')} <span style="font-size:0.8rem;color:{cor_status};">● {status_evento}</span></h4>
+                <p style="color:#475569;margin:4px 0;">📅 {ev.get('data_evento') or '—'} &nbsp;•&nbsp; 💰 {fmt_moeda(ev.get('valor_inscricao'))} por pessoa</p>
+                <p style="color:#475569;margin:4px 0;">💳 {parcelamento_texto} &nbsp;•&nbsp; 🔑 Pix: {ev.get('chave_pix') or '—'}</p>
+                <p style="color:#475569;margin:4px 0;">👥 {total_inscritos} inscritos &nbsp;•&nbsp; {vagas_restantes} vagas restantes &nbsp;•&nbsp; ✅ {len(inscricoes_quitadas)} quitados &nbsp;•&nbsp; 🟡 {len(inscricoes_parciais)} parciais</p>
+                <p style="color:#D97706;margin:4px 0;font-weight:600;">⏳ {len(pagamentos_pendentes)} comprovantes aguardando aprovação</p>
+                <p style="color:#059669;margin:4px 0;font-weight:600;">💵 Arrecadado: {fmt_moeda(total_arrecadado)} &nbsp;•&nbsp; A receber: {fmt_moeda(saldo_a_receber)}</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-            parcelamento_texto = (
-                f"Pagamento em até "
-                f"{int(ev.get('numero_parcelas') or 1)}x"
-                if ev.get("permite_parcelamento")
-                else "Pagamento à vista"
-            )
-
-            st.markdown(
-                f"""
-                <div style="
-                    background:#FFFFFF;
-                    border:1px solid #E2E8F0;
-                    border-radius:14px;
-                    padding:20px;
-                    margin-bottom:12px;
-                ">
-                    <h4 style="margin-top:0;">
-                        {ev.get('nome', 'Evento')}
-                        <span style="
-                            font-size:0.8rem;
-                            color:{cor_status};
-                        ">
-                            ● {status_evento}
-                        </span>
-                    </h4>
-
-                    <p style="color:#475569;margin:4px 0;">
-                        📅 {ev.get('data_evento') or 'Data não informada'}
-                        &nbsp;•&nbsp;
-                        💰 {fmt_moeda(ev.get('valor_inscricao'))} por pessoa
-                    </p>
-
-                    <p style="color:#475569;margin:4px 0;">
-                        💳 {parcelamento_texto}
-                        &nbsp;•&nbsp;
-                        🔑 Pix: {ev.get('chave_pix') or 'Não informado'}
-                    </p>
-
-                    <p style="color:#475569;margin:4px 0;">
-                        👥 {total_inscritos} inscritos
-                        &nbsp;•&nbsp;
-                        {vagas_restantes} vagas restantes
-                        &nbsp;•&nbsp;
-                        ✅ {len(inscricoes_quitadas)} quitados
-                        &nbsp;•&nbsp;
-                        🟡 {len(inscricoes_parciais)} parciais
-                    </p>
-
-                    <p style="
-                        color:#D97706;
-                        margin:4px 0;
-                        font-weight:600;
-                    ">
-                        ⏳ {len(pagamentos_pendentes)}
-                        comprovantes aguardando aprovação
-                    </p>
-
-                    <p style="
-                        color:#059669;
-                        margin:4px 0;
-                        font-weight:600;
-                    ">
-                        💵 Arrecadado:
-                        {fmt_moeda(total_arrecadado)}
-                        &nbsp;•&nbsp;
-                        A receber:
-                        {fmt_moeda(saldo_a_receber)}
-                    </p>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-            # O endereço principal do app é usado para montar o link
-            # público completo do evento.
             app_url = st.secrets.get("APP_URL", "").rstrip("/")
-
-            complemento_link = (
-                f"?pagina=inscricao&evento={ev['id']}"
-            )
-
-            link_publico = (
-                f"{app_url}/{complemento_link}"
-                if app_url
-                else complemento_link
-            )
+            complemento_link = f"?pagina=inscricao&evento={ev['id']}"
+            link_publico = f"{app_url}/{complemento_link}" if app_url else complemento_link
 
             col_link, col_acao = st.columns([3, 1])
-
             with col_link:
-                st.text_input(
-                    "Link público para inscrição",
-                    value=link_publico,
-                    key=f"link_evento_{ev['id']}",
-                    disabled=True
-                )
-
-                if not app_url:
-                    st.caption(
-                        "Cadastre APP_URL nos Secrets para o sistema "
-                        "mostrar o endereço completo. Enquanto isso, "
-                        "cole o trecho acima ao final do endereço do app."
-                    )
-
+                st.text_input("Link público para inscrição", value=link_publico, key=f"link_evento_{ev['id']}", disabled=True)
             with col_acao:
-                novo_status = (
-                    "Encerrado"
-                    if status_evento == "Aberto"
-                    else "Aberto"
-                )
-
-                texto_botao = (
-                    "🔒 Encerrar inscrições"
-                    if status_evento == "Aberto"
-                    else "🔓 Reabrir inscrições"
-                )
-
-                if st.button(
-                    texto_botao,
-                    key=f"alterar_status_evento_{ev['id']}",
-                    use_container_width=True
-                ):
-                    resultado = sb_request(
-                        "eventos",
-                        "PATCH",
-                        {"status": novo_status},
-                        filtros={"id": f"eq.{ev['id']}"}
-                    )
-
+                novo_status = "Encerrado" if status_evento == "Aberto" else "Aberto"
+                texto_botao = "🔒 Encerrar inscrições" if status_evento == "Aberto" else "🔓 Reabrir inscrições"
+                if st.button(texto_botao, key=f"alterar_status_evento_{ev['id']}", use_container_width=True):
+                    resultado = sb_request("eventos", "PATCH", {"status": novo_status}, filtros={"id": f"eq.{ev['id']}"})
                     if resultado is not None:
                         st.cache_data.clear()
                         st.rerun()
                     else:
-                        st.error(
-                            "Não foi possível alterar o status do evento."
-                        )
-
+                        st.error("Não foi possível alterar o status.")
             st.markdown("---")
-
 
 # ==========================================
 # INSCRIÇÕES E COMPROVANTES
@@ -1331,9 +992,8 @@ elif page == "Inscrições e Comprovantes":
                     emoji_status = {"Pendente": "⏳", "Parcial": "🟡", "Completo": "✅"}.get(insc.get("status_pagamento"), "⏳")
                     st.markdown(f"**{insc['nome_participante']}** (CPF {insc.get('cpf','—')}) — {emoji_status} {insc.get('status_pagamento','Pendente')} — {fmt_moeda(insc.get('valor_pago'))} / {fmt_moeda(insc.get('valor_total'))}")
                     for p in sorted(pgs, key=lambda x: x.get("numero_parcela", 1)):
-                        st.caption(f"　Parcela {p.get('numero_parcela',1)}: {fmt_moeda(p.get('valor'))} — {p['status']}")
+                        st.caption(f" Parcela {p.get('numero_parcela',1)}: {fmt_moeda(p.get('valor'))} — {p['status']}")
                     st.markdown("<hr style='margin:6px 0;border-color:#E2E8F0;'>", unsafe_allow_html=True)
-
 
 # ==========================================
 # METAS E ORÇAMENTOS
@@ -1364,7 +1024,7 @@ elif page == "Metas e Orçamentos":
             st.dataframe(df_metas_view.sort_values(['Ano', 'Mês']), use_container_width=True, hide_index=True)
 
     with tab2:
-        st.markdown("Defina o teto de gastos anual por categoria (departamento).")
+        st.markdown("Defina o teto de gastos anual por categoria.")
         cats_saida = [c for c in categorias_db if c['tipo'] == 'Saída']
         with st.form("form_orcamento", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
@@ -1391,7 +1051,7 @@ elif page == "Metas e Orçamentos":
 # ==========================================
 elif page == "Categorias":
     st.title("Gestão de Categorias")
-    st.markdown("Associe as categorias gerenciais ao plano de contas do escritório de contabilidade.")
+    st.markdown("Associe as categorias gerenciais ao plano de contas contábil.")
 
     with st.expander("➕ Nova Categoria"):
         with st.form("form_categoria", clear_on_submit=True):
@@ -1463,9 +1123,9 @@ elif page == "Analytics Financeiro":
             fig.add_bar(x=df_agrupado.index, y=df_agrupado.get('Saída', 0), name='Saídas', marker_color='#EF4444')
             if metas_map:
                 fig.add_scatter(x=df_agrupado.index, y=[metas_map.get(m, {}).get('meta_entradas') for m in df_agrupado.index],
-                                 name='Meta Entradas', mode='lines+markers', line=dict(color='#1E40AF', dash='dot'))
+                               name='Meta Entradas', mode='lines+markers', line=dict(color='#1E40AF', dash='dot'))
                 fig.add_scatter(x=df_agrupado.index, y=[metas_map.get(m, {}).get('meta_saidas') for m in df_agrupado.index],
-                                 name='Teto Saídas', mode='lines+markers', line=dict(color='#991B1B', dash='dot'))
+                               name='Teto Saídas', mode='lines+markers', line=dict(color='#991B1B', dash='dot'))
             fig.update_layout(barmode='group', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='#1E293B', legend_title_text='')
             st.plotly_chart(fig, use_container_width=True)
 
@@ -1546,4 +1206,4 @@ elif page == "Exportar Contabilidade":
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 exportar.to_excel(writer, index=False, sheet_name='Lançamentos')
             st.download_button("📥 Baixar Excel", buffer.getvalue(), file_name=f"financeiro_{ano_exp}_{mes_exp}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
