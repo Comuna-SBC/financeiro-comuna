@@ -884,11 +884,12 @@ elif page == "Tesouraria":
             exibir.columns = ['Data', 'Tipo', 'Descrição', 'Categoria', 'Valor (R$)', 'Situação', 'Projeto', 'Conta']
             st.dataframe(exibir, use_container_width=True, hide_index=True)
 # ==========================================
-# CONCILIAÇÃO BANCÁRIA
+# ==========================================
+# CONCILIAÇÃO BANCÁRIA (COM IMPORTAÇÃO INTELIGENTE DE OFX)
 # ==========================================
 elif page == "Conciliação Bancária":
     st.title("Conciliação Bancária")
-    st.markdown("Confira os lançamentos com o extrato real do banco.")
+    st.markdown("Confira os lançamentos manualmente ou importe o extrato do banco (OFX) para automatizar o cadastro de Dízimos e Ofertas em lote.")
 
     with st.expander("➕ Cadastrar nova conta bancária"):
         with st.form("form_conta", clear_on_submit=True):
@@ -914,7 +915,7 @@ elif page == "Conciliação Bancária":
         conta_id = conta_opcoes[conta_sel]
 
         df = carregar_lancamentos_df()
-        df_conta = df[(df.get('conta_bancaria_id') == conta_id) & (df['status'] == 'Concluído')] if not df.empty else pd.DataFrame()
+        df_conta = df[(df.get('conta_bancaria_id') == conta_id) & (df['status'] == 'Concluído')].copy() if not df.empty else pd.DataFrame()
 
         conta_info = next(c for c in contas_bancarias_db if c["id"] == conta_id)
         saldo_calculado = float(conta_info.get('saldo_inicial') or 0)
@@ -931,25 +932,126 @@ elif page == "Conciliação Bancária":
             if abs(diferenca) < 0.01:
                 st.success("✅ Saldo conferido! Sistema e banco estão batendo.")
             else:
-                st.error(f"⚠️ Diferença encontrada: {fmt_moeda(diferenca)}. Revise os lançamentos abaixo.")
+                st.error(f"⚠️ Diferença encontrada: {fmt_moeda(diferenca)}.")
 
         st.markdown("---")
-        st.subheader("Lançamentos desta conta")
-        if df_conta.empty:
-            st.info("Nenhum lançamento concluído nesta conta ainda.")
-        else:
-            for _, row in df_conta.sort_values('data_competencia', ascending=False).iterrows():
-                c1, c2, c3, c4 = st.columns([3, 1.5, 1.5, 1])
-                c1.write(row['descricao'])
-                c2.write(row['data_competencia'].strftime('%d/%m/%Y'))
-                c3.write(fmt_moeda(row['valor']) if row['tipo'] == 'Entrada' else f"-{fmt_moeda(row['valor'])}")
-                marcado = bool(row.get('conciliado'))
-                novo_valor = c4.checkbox("Conciliado", value=marcado, key=f"conc_{row['id']}")
-                if novo_valor != marcado:
-                    res = sb_request("lancamentos", "PATCH", {"conciliado": novo_valor}, filtros={"id": f"eq.{row['id']}"})
-                    if res is not None:
-                        st.cache_data.clear()
+        tab_ofx, tab_manual = st.tabs(["⚡ Importação Inteligente (OFX)", "🖐️ Conciliação Manual"])
 
+        with tab_ofx:
+            st.markdown("Faça o upload do arquivo **.OFX** gerado pelo seu banco. O sistema cruzará os dados com os eventos/lançamentos já existentes, filtrando apenas os PIX novos para cadastro rápido.")
+            arquivo_ofx = st.file_uploader("Selecione o arquivo OFX do banco", type=['ofx', 'txt'])
+
+            if arquivo_ofx:
+                import re
+                content = arquivo_ofx.read().decode('latin1', errors='ignore')
+                transacoes = []
+                
+                # Leitura nativa do padrão OFX
+                for bloco in re.split(r'<STMTTRN>', content)[1:]:
+                    dt_match = re.search(r'<DTPOSTED>(\d{8})', bloco)
+                    valor_match = re.search(r'<TRNAMT>([-\d\.]+)', bloco)
+                    desc_match = re.search(r'<MEMO>(.*?)(?:<|$)', bloco)
+
+                    if dt_match and valor_match:
+                        dt = pd.to_datetime(dt_match.group(1), format='%Y%m%d').date()
+                        valor = float(valor_match.group(1))
+                        desc = desc_match.group(1).strip() if desc_match else "Extrato Bancário"
+                        desc = re.sub(r'<[^>]+>', '', desc) # Limpa tags HTML se houver
+                        transacoes.append({
+                            "Data": dt,
+                            "Valor": abs(valor),
+                            "Descrição Bancária": desc[:80],
+                            "Tipo": "Entrada" if valor >= 0 else "Saída",
+                            "Status": "Não registrado"
+                        })
+
+                df_ofx = pd.DataFrame(transacoes)
+
+                if not df_ofx.empty:
+                    # Motor de cruzamento de dados (Ignora o que já foi validado em eventos)
+                    used_ids = set()
+                    for idx, row in df_ofx.iterrows():
+                        if not df_conta.empty:
+                            mask_tipo = df_conta['tipo'] == row['Tipo']
+                            mask_valor = df_conta['valor'] == row['Valor']
+                            # Margem de segurança de 3 dias para compensação bancária
+                            mask_data = (pd.to_datetime(df_conta['data_competencia']).dt.date - row['Data']).apply(lambda x: abs(x.days)) <= 3
+                            mask_used = ~df_conta['id'].isin(used_ids)
+
+                            match = df_conta[mask_tipo & mask_valor & mask_data & mask_used]
+                            if not match.empty:
+                                match_id = match.iloc[0]['id']
+                                df_ofx.at[idx, 'Status'] = 'Já no sistema'
+                                used_ids.add(match_id)
+
+                    # Filtra apenas as ENTRADAS órfãs (possíveis dízimos e ofertas não registrados)
+                    df_entradas_novas = df_ofx[(df_ofx['Status'] == 'Não registrado') & (df_ofx['Tipo'] == 'Entrada')].copy()
+
+                    if df_entradas_novas.empty:
+                        st.success("🎉 Todas as entradas deste extrato já constam e batem com o sistema (Eventos, PIX, etc)!")
+                    else:
+                        st.info(f"Encontramos **{len(df_entradas_novas)} transferências (PIX/Depósitos)** no extrato que ainda não constam no sistema.")
+                        df_entradas_novas.insert(0, 'Cadastrar', False)
+
+                        st.write("Marque na tabela abaixo quais transferências você deseja converter em lançamentos:")
+                        df_editado = st.data_editor(
+                            df_entradas_novas[['Cadastrar', 'Data', 'Descrição Bancária', 'Valor']],
+                            hide_index=True, use_container_width=True
+                        )
+
+                        col_cat, col_btn = st.columns([2, 1])
+                        opcoes_cats_entrada = {c["nome"]: c["id"] for c in categorias_db if c["tipo"] == "Entrada"}
+                        
+                        # Tenta deixar "Dízimos e Ofertas" pré-selecionado por padrão
+                        cat_padrao = "Dízimos e Ofertas" if "Dízimos e Ofertas" in opcoes_cats_entrada else list(opcoes_cats_entrada.keys())[0]
+                        cat_lote = col_cat.selectbox("Classificar os itens marcados como:", list(opcoes_cats_entrada.keys()), index=list(opcoes_cats_entrada.keys()).index(cat_padrao))
+
+                        if col_btn.button("💾 Salvar Marcados no Banco", type="primary", use_container_width=True):
+                            itens_selecionados = df_editado[df_editado['Cadastrar'] == True]
+                            if itens_selecionados.empty:
+                                st.warning("Marque pelo menos um item na tabela clicando na caixa 'Cadastrar'.")
+                            else:
+                                with st.spinner("Registrando lançamentos..."):
+                                    for _, row_sel in itens_selecionados.iterrows():
+                                        sb_request("lancamentos", "POST", {
+                                            "descricao": f"PIX Extrato: {row_sel['Descrição Bancária']}",
+                                            "tipo": "Entrada",
+                                            "valor": float(row_sel['Valor']),
+                                            "data_competencia": str(row_sel['Data']),
+                                            "status": "Concluído",
+                                            "data_pagamento": str(row_sel['Data']),
+                                            "categoria_id": opcoes_cats_entrada[cat_lote],
+                                            "conta_bancaria_id": conta_id,
+                                            "conciliado": True
+                                        })
+                                    st.cache_data.clear()
+                                    st.success(f"{len(itens_selecionados)} Dízimos/Ofertas registrados com sucesso!")
+                                    time.sleep(1.5)
+                                    st.rerun()
+
+                    with st.expander("Ver itens cruzados automaticamente (PIX de eventos, etc)"):
+                        df_ja_registrado = df_ofx[df_ofx['Status'] == 'Já no sistema']
+                        if not df_ja_registrado.empty:
+                            st.dataframe(df_ja_registrado[['Data', 'Descrição Bancária', 'Valor', 'Tipo']], use_container_width=True, hide_index=True)
+                        else:
+                            st.write("Nenhum cruzamento encontrado neste arquivo.")
+
+        with tab_manual:
+            st.subheader("Lista de Lançamentos da Conta")
+            if df_conta.empty:
+                st.info("Nenhum lançamento concluído nesta conta ainda.")
+            else:
+                for _, row in df_conta.sort_values('data_competencia', ascending=False).iterrows():
+                    c1, c2, c3, c4 = st.columns([3, 1.5, 1.5, 1])
+                    c1.write(row['descricao'])
+                    c2.write(row['data_competencia'].strftime('%d/%m/%Y'))
+                    c3.write(fmt_moeda(row['valor']) if row['tipo'] == 'Entrada' else f"-{fmt_moeda(row['valor'])}")
+                    marcado = bool(row.get('conciliado'))
+                    novo_valor = c4.checkbox("Conciliado", value=marcado, key=f"conc_{row['id']}")
+                    if novo_valor != marcado:
+                        res = sb_request("lancamentos", "PATCH", {"conciliado": novo_valor}, filtros={"id": f"eq.{row['id']}"})
+                        if res is not None:
+                            st.cache_data.clear()
 # ==========================================
 # PAINEL DE EVENTOS
 # ==========================================
