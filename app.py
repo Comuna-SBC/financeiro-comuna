@@ -486,8 +486,7 @@ if page == "Resumo do Dia":
         recorrencias_expirando = df[
             (df['recorrente'] == True) & 
             (df['data_fim_recorrencia'].dt.month == mes_atual_num) & 
-            (df['data_fim_recorrencia'].dt.year == ano_atual_num)
-        ]
+            (df['data_fim_recorrencia'].dt.year == ano_atual_num)]
 
     pagamentos_pendentes = [p for p in pagamentos_resumo if p.get("status"] == "Pendente"]
     inscricoes_por_id = {str(i.get("id")): i for i in inscricoes_resumo}
