@@ -885,27 +885,52 @@ elif page == "Tesouraria":
             st.dataframe(exibir, use_container_width=True, hide_index=True)
 # ==========================================
 # ==========================================
+# ==========================================
 # CONCILIAÇÃO BANCÁRIA (COM IMPORTAÇÃO INTELIGENTE DE OFX)
 # ==========================================
 elif page == "Conciliação Bancária":
     st.title("Conciliação Bancária")
     st.markdown("Confira os lançamentos manualmente ou importe o extrato do banco (OFX) para automatizar o cadastro de Dízimos e Ofertas em lote.")
 
-    with st.expander("➕ Cadastrar nova conta bancária"):
-        with st.form("form_conta", clear_on_submit=True):
-            cc1, cc2, cc3 = st.columns(3)
-            nome_conta = cc1.text_input("Nome da Conta (Ex: Itaú Principal)")
-            tipo_conta = cc2.selectbox("Tipo", ["Corrente", "Poupança", "Investimento"])
-            saldo_inicial = cc3.number_input("Saldo Inicial (R$)", min_value=0.0, format="%.2f")
-            if st.form_submit_button("Cadastrar Conta"):
-                if nome_conta:
-                    res = sb_request("contas_bancarias", "POST", {"nome": nome_conta, "tipo": tipo_conta, "saldo_inicial": float(saldo_inicial)})
-                    if res is not None:
-                        st.cache_data.clear()
-                        st.success("Conta cadastrada!")
-                        st.rerun()
-                else:
-                    st.warning("Informe o nome da conta.")
+    col_nova, col_edit = st.columns(2)
+    with col_nova:
+        with st.expander("➕ Cadastrar Conta Bancária"):
+            with st.form("form_conta", clear_on_submit=True):
+                nome_conta = st.text_input("Nome da Conta (Ex: Itaú Principal)")
+                tipo_conta = st.selectbox("Tipo", ["Corrente", "Poupança", "Investimento"])
+                saldo_inicial = st.number_input("Saldo Inicial (R$)", min_value=0.0, format="%.2f")
+                if st.form_submit_button("Cadastrar Conta", use_container_width=True):
+                    if nome_conta:
+                        res = sb_request("contas_bancarias", "POST", {"nome": nome_conta, "tipo": tipo_conta, "saldo_inicial": float(saldo_inicial)})
+                        if res is not None:
+                            st.cache_data.clear(); st.success("Conta cadastrada!"); time.sleep(1); st.rerun()
+                    else:
+                        st.warning("Informe o nome da conta.")
+
+    with col_edit:
+        with st.expander("✏️ Editar ou Excluir Conta"):
+            if contas_bancarias_db:
+                conta_map = {c['nome']: c for c in contas_bancarias_db}
+                conta_sel_edit = st.selectbox("Selecione a Conta", list(conta_map.keys()))
+                conta_data = conta_map[conta_sel_edit]
+                
+                with st.form("form_edit_conta"):
+                    n_nome = st.text_input("Nome da Conta", value=conta_data['nome'])
+                    n_tipo = st.selectbox("Tipo", ["Corrente", "Poupança", "Investimento"], index=["Corrente", "Poupança", "Investimento"].index(conta_data.get('tipo', 'Corrente')))
+                    n_saldo = st.number_input("Saldo Inicial (R$)", value=float(conta_data.get('saldo_inicial') or 0.0), format="%.2f")
+                    
+                    c_btn1, c_btn2 = st.columns(2)
+                    btn_upd = c_btn1.form_submit_button("💾 Atualizar", use_container_width=True)
+                    btn_del = c_btn2.form_submit_button("🗑️ Excluir", use_container_width=True)
+                    
+                    if btn_upd:
+                        res = sb_request("contas_bancarias", "PATCH", {"nome": n_nome, "tipo": n_tipo, "saldo_inicial": float(n_saldo)}, filtros={"id": f"eq.{conta_data['id']}"})
+                        if res is not None:
+                            st.cache_data.clear(); st.success("Atualizada!"); time.sleep(1); st.rerun()
+                    if btn_del:
+                        res = sb_request("contas_bancarias", "DELETE", filtros={"id": f"eq.{conta_data['id']}"})
+                        if res is not None:
+                            st.cache_data.clear(); st.success("Excluída!"); time.sleep(1); st.rerun()
 
     if not contas_bancarias_db:
         st.info("Cadastre ao menos uma conta bancária acima para iniciar a conciliação.")
@@ -1281,26 +1306,58 @@ elif page == "Metas e Orçamentos":
 # ==========================================
 # CATEGORIAS
 # ==========================================
+# ==========================================
+# CATEGORIAS
+# ==========================================
 elif page == "Categorias":
     st.title("Gestão de Categorias")
     st.markdown("Associe as categorias gerenciais ao plano de contas contábil.")
 
-    with st.expander("➕ Nova Categoria"):
-        with st.form("form_categoria", clear_on_submit=True):
-            c1, c2, c3 = st.columns(3)
-            nome_cat = c1.text_input("Nome da Categoria")
-            tipo_cat = c2.selectbox("Tipo", ["Entrada", "Saída"])
-            codigo_cat = c3.text_input("Código Contábil (opcional)")
-            if st.form_submit_button("Cadastrar Categoria"):
-                if nome_cat:
-                    res = sb_request("categorias", "POST", {"nome": nome_cat, "tipo": tipo_cat, "codigo_contabil": codigo_cat or None})
-                    if res is not None:
-                        st.cache_data.clear()
-                        st.success("Categoria criada!")
-                        st.rerun()
-                else:
-                    st.warning("Informe o nome da categoria.")
+    col_nova, col_edit = st.columns(2)
+    with col_nova:
+        with st.expander("➕ Nova Categoria", expanded=True):
+            with st.form("form_categoria", clear_on_submit=True):
+                nome_cat = st.text_input("Nome da Categoria")
+                tipo_cat = st.selectbox("Tipo", ["Entrada", "Saída"])
+                codigo_cat = st.text_input("Código Contábil (opcional)")
+                if st.form_submit_button("Cadastrar Categoria", use_container_width=True):
+                    if nome_cat:
+                        res = sb_request("categorias", "POST", {"nome": nome_cat, "tipo": tipo_cat, "codigo_contabil": codigo_cat or None})
+                        if res is not None:
+                            st.cache_data.clear()
+                            st.success("Categoria criada!")
+                            time.sleep(1); st.rerun()
+                    else:
+                        st.warning("Informe o nome.")
 
+    with col_edit:
+        with st.expander("✏️ Editar ou Excluir Categoria"):
+            if categorias_db:
+                cat_map = {f"{c['nome']} ({c['tipo']})": c for c in categorias_db}
+                cat_sel = st.selectbox("Selecione a Categoria", list(cat_map.keys()))
+                cat_data = cat_map[cat_sel]
+                
+                with st.form("form_edit_cat"):
+                    novo_nome = st.text_input("Nome", value=cat_data['nome'])
+                    novo_tipo = st.selectbox("Tipo", ["Entrada", "Saída"], index=0 if cat_data['tipo'] == "Entrada" else 1)
+                    novo_cod = st.text_input("Código Contábil", value=cat_data.get('codigo_contabil') or "")
+                    
+                    c_btn1, c_btn2 = st.columns(2)
+                    btn_atualizar = c_btn1.form_submit_button("💾 Atualizar", use_container_width=True)
+                    btn_excluir = c_btn2.form_submit_button("🗑️ Excluir", use_container_width=True)
+                    
+                    if btn_atualizar:
+                        res = sb_request("categorias", "PATCH", {"nome": novo_nome, "tipo": novo_tipo, "codigo_contabil": novo_cod or None}, filtros={"id": f"eq.{cat_data['id']}"})
+                        if res is not None:
+                            st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1); st.rerun()
+                    if btn_excluir:
+                        res = sb_request("categorias", "DELETE", filtros={"id": f"eq.{cat_data['id']}"})
+                        if res is not None:
+                            st.cache_data.clear(); st.success("Excluída!"); time.sleep(1); st.rerun()
+            else:
+                st.info("Nenhuma categoria cadastrada.")
+
+    st.markdown("---")
     if categorias_db:
         df_cats = pd.DataFrame(categorias_db)[['nome', 'tipo', 'codigo_contabil']]
         df_cats.columns = ['Categoria', 'Natureza', 'Código Contábil']
