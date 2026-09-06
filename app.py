@@ -1236,11 +1236,12 @@ elif page == "Analytics Financeiro":
             st.info("Nenhuma movimentação vinculada a eventos ainda.")
 
 # ==========================================
-# EXPORTAR CONTABILIDADE
+# ==========================================
+# EXPORTAR CONTABILIDADE (COM DOWNLOAD DE ANEXOS EM ZIP)
 # ==========================================
 elif page == "Exportar Contabilidade":
     st.title("Exportar para Contabilidade")
-    st.markdown("Gere o arquivo consolidado do período para envio ao escritório contábil.")
+    st.markdown("Gere o arquivo consolidado do período e baixe um pacote `.zip` contendo os lançamentos em Excel/CSV junto com todos os comprovantes e notas fiscais anexadas.")
 
     df = carregar_lancamentos_df()
     if df.empty:
@@ -1248,10 +1249,10 @@ elif page == "Exportar Contabilidade":
     else:
         anos_disp = sorted(df['data_competencia'].dt.year.dropna().unique().astype(int), reverse=True)
         col1, col2 = st.columns(2)
-        ano_exp = col1.selectbox("Ano", anos_disp)
-        mes_exp = col2.selectbox("Mês", ["Todos"] + MESES_PT)
+        ano_exp = col1.selectbox("Ano", anos_disp, key="ano_exp_contab")
+        mes_exp = col2.selectbox("Mês", ["Todos"] + MESES_PT, key="mes_exp_contab")
 
-        dff = df[df['data_competencia'].dt.year == ano_exp]
+        dff = df[df['data_competencia'].dt.year == ano_exp].copy()
         if mes_exp != "Todos":
             idx_mes = MESES_PT.index(mes_exp) + 1
             dff = dff[dff['data_competencia'].dt.month == idx_mes]
@@ -1262,11 +1263,56 @@ elif page == "Exportar Contabilidade":
 
         st.dataframe(exportar, use_container_width=True, hide_index=True)
 
-        col_d1, col_d2 = st.columns(2)
+        col_d1, col_d2, col_d3 = st.columns(3)
+        
         with col_d1:
             csv = exportar.to_csv(index=False, sep=';', decimal=',').encode('utf-8-sig')
             st.download_button("📥 Baixar CSV", csv, file_name=f"financeiro_{ano_exp}_{mes_exp}.csv", mime="text/csv", use_container_width=True)
+            
         with col_d2:
             excel_data = to_excel_bytes({"Lançamentos": exportar})
             st.download_button("📥 Baixar Excel", excel_data, file_name=f"financeiro_{ano_exp}_{mes_exp}.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                               
+        with col_d3:
+            import zipfile
+            
+            # Botão para baixar Pacote ZIP (Excel + Anexos do Mês)
+            if st.button("📦 Baixar Pacote ZIP (Excel + Anexos)", use_keyword_arguments=True, use_container_width=True):
+                with st.spinner("Empacotando lançamentos e baixando anexos..."):
+                    zip_buffer = io.BytesIO()
+                    
+                    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                        # 1. Adiciona a planilha Excel dentro do ZIP
+                        zip_file.writestr(f"financeiro_{ano_exp}_{mes_exp}.xlsx", excel_data)
+                        
+                        # 2. Varre os lançamentos filtrados para coletar e baixar os anexos do Storage
+                        anexos_adicionados = 0
+                        for _, row_orig in dff.iterrows():
+                            path_anexo = row_orig.get('url_anexo')
+                            if path_anexo and isinstance(path_anexo, str) and path_anexo.strip():
+                                try:
+                                    # Baixa o arquivo binário diretamente do bucket 'comprovantes' do Supabase
+                                    file_res = supabase.storage.from_("comprovantes").download(path_anexo)
+                                    if file_res:
+                                        # Cria um nome de arquivo limpo para dentro do ZIP
+                                        nome_original = path_anexo.split('/')[-1]
+                                        data_str = pd.to_datetime(row_orig['data_competencia']).strftime('%Y%m%d')
+                                        nome_no_zip = f"comprovantes/{data_str}_{nome_original}"
+                                        
+                                        zip_file.writestr(nome_no_zip, file_res)
+                                        anexos_adicionados += 1
+                                except Exception:
+                                    # Ignora caso o arquivo não exista mais no storage ou dê falha pontual
+                                    pass
+                                    
+                    zip_buffer.seek(0)
+                    st.success(f"Pacote gerado com sucesso! ({anexos_adicionados} anexos incluídos).")
+                    
+                    st.download_button(
+                        label="⬇️ Clique aqui para salvar o ZIP",
+                        data=zip_buffer.getvalue(),
+                        file_name=f"Contabilidade_Pacote_{ano_exp}_{mes_exp}.zip",
+                        mime="application/zip",
+                        use_container_width=True
+                    )
