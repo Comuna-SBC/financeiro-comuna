@@ -9,15 +9,120 @@ import plotly.express as px
 import requests
 
 # ==========================================
-# 1. CONFIGURAÇÃO DA PÁGINA
+# 1. CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM (UX/UI)
 # ==========================================
-st.set_page_config(page_title="Financeiro COMUNA", page_icon="⛪", layout="wide")
+st.set_page_config(
+    page_title="Financeiro COMUNA", 
+    page_icon="⛪", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
+# Estilização CSS Profissional Avançada
 st.markdown("""
     <style>
-    .main { background-color: #0E1117; color: #FFFFFF; }
-    div[data-testid="stMetricValue"] { color: #4CAF50; font-size: 2rem; }
-    div[data-testid="stForm"] { background-color: #1A1C23; padding: 20px; border-radius: 10px; border: 1px solid #2D303E;}
+    /* Importação de fonte moderna */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+
+    /* Fundo geral e espaçamentos */
+    .main {
+        background-color: #0B0F19;
+        color: #F3F4F6;
+        padding: 2rem 1.5rem;
+    }
+    
+    /* Sidebar refinada */
+    [data-testid="stSidebar"] {
+        background-color: #111827;
+        border-right: 1px solid #1F2937;
+    }
+    
+    [data-testid="stSidebar"] .stRadio label {
+        font-size: 1rem !important;
+        font-weight: 500 !important;
+        padding: 10px 14px !important;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+        color: #D1D5DB !important;
+    }
+    
+    [data-testid="stSidebar"] .stRadio label:hover {
+        background-color: #1F2937;
+        color: #FFFFFF !important;
+    }
+
+    /* Cards de Métricas (KPIs) com efeito moderno */
+    div[data-testid="stMetric"] {
+        background: #161E2E;
+        border: 1px solid #1F2937;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+    div[data-testid="stMetricValue"] {
+        color: #34D399;
+        font-size: 1.8rem !important;
+        font-weight: 700;
+    }
+    div[data-testid="stMetricLabel"] {
+        color: #9CA3AF !important;
+        font-size: 0.95rem !important;
+        font-weight: 500;
+    }
+
+    /* Formulários e Inputs Profissionais */
+    div[data-testid="stForm"] {
+        background-color: #161E2E;
+        padding: 30px;
+        border-radius: 16px;
+        border: 1px solid #1F2937;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Ajuste de inputs para eliminar textos pretos ou contrastes ruins */
+    .stTextInput input, .stNumberInput input, .stSelectbox select, .stDateInput input {
+        background-color: #0B0F19 !important;
+        color: #F3F4F6 !important;
+        border: 1px solid #374151 !important;
+        border-radius: 8px !important;
+        padding: 10px 14px !important;
+    }
+    
+    .stTextInput input:focus, .stNumberInput input:focus {
+        border-color: #3B82F6 !important;
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    }
+
+    /* Botões de Ação Principais com altura ideal e toque moderno */
+    .stButton button, div[data-testid="stFormSubmitButton"] button {
+        background-color: #2563EB !important;
+        color: white !important;
+        font-weight: 600 !important;
+        padding: 0.75rem 1.5rem !important;
+        border-radius: 8px !important;
+        border: none !important;
+        width: 100%;
+        transition: background-color 0.2s;
+    }
+    .stButton button:hover, div[data-testid="stFormSubmitButton"] button:hover {
+        background-color: #1D4ED8 !important;
+    }
+
+    /* Títulos e Cabeçalhos */
+    h1, h2, h3 {
+        color: #F9FAFB !important;
+        font-weight: 700 !important;
+    }
+    
+    /* Tabelas limpas */
+    dataframe {
+        border-radius: 8px;
+        overflow: hidden;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -31,10 +136,8 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     st.error("⚠️ Credenciais do Supabase não configuradas nos Secrets.")
     st.stop()
 
-# Cliente padrão para Storage (Upload de comprovantes)
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Função auxiliar para requisições HTTP diretas (Bypass total de bugs do Postgrest-py)
 def sb_request(tabela, metodo="GET", payload=None):
     headers = {
         "apikey": SUPABASE_KEY,
@@ -128,46 +231,67 @@ def comprimir_e_fazer_upload(arquivo_upload):
         return None
 
 # ==========================================
-# 5. INTERFACE E NAVEGAÇÃO
+# 5. MENU LATERAL PROFISSIONAL
 # ==========================================
-menu = st.sidebar.radio("Navegação", [
-    "📝 Lançar Movimentação", 
-    "📊 Dashboard Congregacional", 
-    "📽️ Apresentação Trimestral", 
-    "⚙️ Cadastros e Contabilidade"
-])
+st.sidebar.markdown("<h2 style='text-align: center; color: #F3F4F6; margin-bottom: 20px;'>⛪ COMUNA</h2>", unsafe_allow_html=True)
+
+menu = st.sidebar.radio(
+    "Menu Principal", 
+    [
+        "📝 Lançar Movimentação", 
+        "📊 Dashboard Congregacional", 
+        "📽️ Apresentação Trimestral", 
+        "⚙️ Cadastros e Contabilidade"
+    ],
+    label_visibility="collapsed"
+)
+
+st.sidebar.markdown("---")
+st.sidebar.caption("Painel Financeiro Integrado v2.4")
 
 # ------------------------------------------
-# TELA 1: LANÇAMENTOS
+# TELA 1: LANÇAMENTOS (UX Otimizada)
 # ------------------------------------------
 if menu == "📝 Lançar Movimentação":
-    st.title("Caixa Diário")
-    st.caption("Registro rápido de entradas e despesas.")
+    st.title("Novo Lançamento")
+    st.markdown("Insira os dados da movimentação diária com rapidez e segurança.")
+    st.markdown("")
     
     with st.form("form_lancamento", clear_on_submit=True):
         col1, col2, col3 = st.columns([1, 1, 1])
-        tipo_lanc = col1.radio("Tipo", ["Entrada", "Saída"], horizontal=True)
-        valor = col2.number_input("Valor (R$)", min_value=0.0, step=50.0, format="%.2f")
-        data_comp = col3.date_input("Data", date.today())
+        with col1:
+            tipo_lanc = st.radio("Tipo de Movimentação", ["Entrada", "Saída"], horizontal=True)
+        with col2:
+            valor = st.number_input("Valor (R$)", min_value=0.0, step=50.0, format="%.2f")
+        with col3:
+            data_comp = st.date_input("Data Competência", date.today())
         
+        st.markdown("")
         cats_filtradas = [c for c in categorias_db if c.get("tipo") == tipo_lanc]
         opcoes_cats = {c["nome"]: c["id"] for c in cats_filtradas}
         
         col4, col5 = st.columns([2, 1])
-        descricao = col4.text_input("Descrição da Movimentação")
-        categoria_sel = col5.selectbox("Categoria Contábil/Gerencial", list(opcoes_cats.keys()) if opcoes_cats else ["Nenhuma"])
+        with col4:
+            descricao = st.text_input("Descrição (Ex: Conta de Luz, Dízimo Anônimo)")
+        with col5:
+            categoria_sel = st.selectbox("Categoria", list(opcoes_cats.keys()) if opcoes_cats else ["Nenhuma"])
         
         col6, col7 = st.columns([1, 1])
-        tag = col6.selectbox("Projeto / Evento (Centro de Custo)", ["Nenhum", "Retiro das Mulheres", "Acampamento Adolescentes", "Construção", "Missões Específicas"])
-        arquivo = col7.file_uploader("Anexar Nota Fiscal / Recibo", type=['png', 'jpg', 'jpeg', 'pdf'])
+        with col6:
+            tag = st.selectbox("Centro de Custo / Evento", ["Nenhum", "Retiro das Mulheres", "Acampamento Adolescentes", "Construção", "Missões Específicas"])
+        with col7:
+            arquivo = st.file_uploader("Comprovante / Nota Fiscal", type=['png', 'jpg', 'jpeg', 'pdf'])
         
-        if st.form_submit_button("💾 Salvar Lançamento", use_container_width=True):
+        st.markdown("")
+        submit = st.form_submit_button("💾 Salvar Movimentação no Caixa", use_container_width=True)
+        
+        if submit:
             if valor <= 0 or not descricao:
-                st.warning("⚠️ Preencha a descrição e um valor válido.")
+                st.warning("⚠️ Preencha a descrição e um valor superior a zero.")
             elif not opcoes_cats:
                 st.error("⚠️ Nenhuma categoria cadastrada para este tipo.")
             else:
-                with st.spinner("Processando..."):
+                with st.spinner("Salvando e otimizando anexo..."):
                     url_anexo = comprimir_e_fazer_upload(arquivo) if arquivo else None
                     dados = {
                         "descricao": descricao, 
@@ -181,7 +305,7 @@ if menu == "📝 Lançar Movimentação":
                     }
                     sb_request("lancamentos", "POST", dados)
                     st.cache_data.clear()
-                    st.success("✅ Registrado com sucesso!")
+                    st.success("✅ Lançamento registrado com sucesso!")
                     time.sleep(1)
                     st.rerun()
 
@@ -189,16 +313,20 @@ if menu == "📝 Lançar Movimentação":
 # TELA 2: DASHBOARD
 # ------------------------------------------
 elif menu == "📊 Dashboard Congregacional":
-    st.title("Visão de Saúde Financeira")
+    st.title("Visão Geral de Saúde Financeira")
+    st.markdown("Acompanhamento consolidado do fluxo de caixa e metas.")
+    st.markdown("")
     
     if df_lancamentos.empty:
-        st.info("Nenhum lançamento registrado ainda. Utilize a aba de lançamentos para começar.")
+        st.info("Nenhum lançamento registrado ainda. Comece utilizando a aba lateral de lançamentos.")
     else:
-        st.write("### Filtros")
+        st.subheader("Filtros de Período")
         col_f1, col_f2 = st.columns(2)
         meses_disp = sorted(df_lancamentos['mes_ano'].unique(), reverse=True)
-        mes_sel = col_f1.multiselect("Selecionar Mês/Ano", meses_disp, default=meses_disp[:3] if len(meses_disp) >=3 else meses_disp)
-        ignorar_eventos = col_f2.checkbox("Ocultar movimentações de Eventos (Retiro/Acampamento)", value=True)
+        with col_f1:
+            mes_sel = st.multiselect("Selecionar Mês/Ano", meses_disp, default=meses_disp[:3] if len(meses_disp) >= 3 else meses_disp)
+        with col_f2:
+            ignorar_eventos = st.checkbox("Ocultar movimentações de Eventos Especiais", value=True)
         
         df_filtrado = df_lancamentos[df_lancamentos['mes_ano'].isin(mes_sel)]
         if ignorar_eventos and 'centro_custo' in df_filtrado.columns:
@@ -207,68 +335,82 @@ elif menu == "📊 Dashboard Congregacional":
         entradas = df_filtrado[df_filtrado['tipo'] == 'Entrada']['valor'].sum()
         saidas = df_filtrado[df_filtrado['tipo'] == 'Saída']['valor'].sum()
         
-        st.divider()
+        st.markdown("")
         col_k1, col_k2, col_k3, col_k4 = st.columns(4)
         col_k1.metric("Total Entradas", f"R$ {entradas:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
         col_k2.metric("Total Saídas", f"R$ {saidas:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
-        col_k3.metric("Resultado", f"R$ {entradas - saidas:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
+        col_k3.metric("Resultado do Período", f"R$ {entradas - saidas:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
         
         reserva_caixa = 150000.00 
         media_saidas = saidas / len(mes_sel) if len(mes_sel) > 0 else 1
         meses_reserva = reserva_caixa / media_saidas if media_saidas > 0 else 0
-        col_k4.metric("Fôlego Financeiro", f"{meses_reserva:.1f} Meses", "Reserva em Aplicação")
+        col_k4.metric("Fôlego de Caixa", f"{meses_reserva:.1f} Meses", "Reserva Estimada")
 
-        st.subheader("Entradas vs Saídas (Evolução)")
+        st.markdown("---")
+        st.subheader("Evolução Mensal (Entradas vs Saídas)")
         if not df_filtrado.empty:
             df_agrupado = df_filtrado.groupby(['mes_ano', 'tipo'])['valor'].sum().reset_index()
             fig_bar = px.bar(df_agrupado, x='mes_ano', y='valor', color='tipo', barmode='group',
-                             color_discrete_map={'Entrada': '#1E88E5', 'Saída': '#FF7043'})
-            fig_bar.add_hline(y=100000, line_dash="dot", annotation_text="Alvo Entradas (100k)", line_color="#1E88E5")
-            fig_bar.add_hline(y=70000, line_dash="dot", annotation_text="Alvo Saídas (70k)", line_color="#FF7043")
-            fig_bar.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='white')
+                             color_discrete_map={'Entrada': '#3B82F6', 'Saída': '#EF4444'})
+            fig_bar.add_hline(y=100000, line_dash="dot", annotation_text="Meta Entradas", line_color="#3B82F6")
+            fig_bar.add_hline(y=70000, line_dash="dot", annotation_text="Teto Saídas", line_color="#EF4444")
+            fig_bar.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)', 
+                paper_bgcolor='rgba(0,0,0,0)', 
+                font_color='#F3F4F6',
+                legend_title_text=''
+            )
             st.plotly_chart(fig_bar, use_container_width=True)
 
 # ------------------------------------------
 # TELA 3: APRESENTAÇÃO TRIMESTRAL
 # ------------------------------------------
 elif menu == "📽️ Apresentação Trimestral":
-    st.title("Reunião de Prestação de Contas")
-    st.caption("Projete esta tela durante a assembleia.")
+    st.title("Prestação de Contas Executiva")
+    st.markdown("Visão voltada para exibição em assembleias e reuniões de liderança.")
+    st.markdown("")
     
     if df_lancamentos.empty:
-        st.info("Necessário lançar dados primeiro.")
+        st.info("Insira dados de lançamentos para gerar os gráficos executivos.")
     else:
         df_saidas = df_lancamentos[df_lancamentos['tipo'] == 'Saída']
         
         col_g1, col_g2 = st.columns([1, 1])
         with col_g1:
-            st.subheader("Destino das Saídas (Pizza)")
+            st.subheader("Destino dos Recursos (Saídas)")
             if not df_saidas.empty:
                 df_pizza = df_saidas.groupby('categoria_nome')['valor'].sum().reset_index()
-                fig_pie = px.pie(df_pizza, values='valor', names='categoria_nome', hole=0.4)
-                fig_pie.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='white')
+                fig_pie = px.pie(df_pizza, values='valor', names='categoria_nome', hole=0.5,
+                                 color_discrete_sequence=px.colors.qualitative.Prism)
+                fig_pie.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='#F3F4F6')
                 fig_pie.update_traces(textposition='inside', textinfo='percent+label')
                 st.plotly_chart(fig_pie, use_container_width=True)
             else:
                 st.info("Sem saídas registradas.")
             
         with col_g2:
-            st.subheader("Narrativa do Trimestre")
-            st.markdown("### 🏆 Conquistas")
-            st.markdown("- Organização de caixa e otimização de fluxo\n- Relatórios gerenciais automatizados")
-            st.markdown("### 🎯 Desafios")
-            st.markdown("- Alcance da meta orçamentária mensal")
+            st.subheader("Narrativa Ministerial")
+            st.markdown("""
+            <div style="background-color: #161E2E; padding: 20px; border-radius: 12px; border: 1px solid #1F2937;">
+                <h4 style="color: #34D399; margin-top: 0;">🏆 Principais Conquistas</h4>
+                <p style="color: #D1D5DB; font-size: 0.95rem;">Organização automatizada do fluxo financeiro, corte de despesas redundantes e estabilização do fundo de reserva.</p>
+                
+                <h4 style="color: #F59E0B; margin-top: 15px;">🎯 Alvos e Próximos Passos</h4>
+                <p style="color: #D1D5DB; font-size: 0.95rem;">Manutenção da média orçamentária estipulada e expansão dos projetos missionários locais.</p>
+            </div>
+            """, unsafe_allow_html=True)
 
 # ------------------------------------------
 # TELA 4: CADASTROS E CONTABILIDADE
 # ------------------------------------------
 elif menu == "⚙️ Cadastros e Contabilidade":
-    st.title("De/Para Contábil")
-    st.write("Associe as categorias gerenciais ao Plano de Contas.")
+    st.title("Plano de Contas & De/Para")
+    st.markdown("Associação entre as categorias gerenciais e o escritório contábil.")
+    st.markdown("")
     
     if categorias_db:
         df_cats = pd.DataFrame(categorias_db)[['nome', 'tipo', 'codigo_contabil']]
-        df_cats.columns = ['Categoria Visível no App', 'Natureza', 'Código Contábil (Escritório)']
+        df_cats.columns = ['Categoria Visível no App', 'Natureza', 'Código Contábil']
         st.dataframe(df_cats, use_container_width=True, hide_index=True)
     else:
         st.info("Nenhuma categoria cadastrada.")
