@@ -772,7 +772,17 @@ elif page == "Visão Consolidada":
 # ==========================================
 elif page == "Tesouraria":
     st.title("Tesouraria")
-    tab1, tab2, tab3, tab4 = st.tabs(["📝 Novo Lançamento", "⏳ Contas a Pagar/Receber", "📜 Histórico Completo", "🔁 Regras Recorrentes"])
+    
+    # Sincroniza a aba solicitada externamente (ex: botão Detalhes) com o componente de abas
+    if "tesouraria_tab" in st.session_state:
+        st.session_state["tesouraria_active_tab"] = st.session_state.pop("tesouraria_tab")
+
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📝 Novo Lançamento", 
+        "⏳ Contas a Pagar/Receber", 
+        "📜 Histórico Completo", 
+        "🔁 Regras Recorrentes"
+    ], key="tesouraria_active_tab")
 
     with tab1:
         st.markdown("### Registrar Movimentação")
