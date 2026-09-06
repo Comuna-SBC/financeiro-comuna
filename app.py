@@ -764,8 +764,8 @@ elif page == "Visão Consolidada":
                 label="💾 Baixar Tabela Selecionada (Excel)",
                 data=excel_detalhe,
                 file_name=f"Detalhes_{ano_sel}_{mes_drill}_{cat_drill}.xlsx".replace(" ", "_"),
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )==================
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+           
 # ==========================================
 # ==========================================
 # ==========================================
