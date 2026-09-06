@@ -6,10 +6,10 @@ import io
 from datetime import date
 import time
 import plotly.express as px
-import plotly.graph_objects as go
+import requests
 
 # ==========================================
-# 1. CONFIGURAÇÃO DA PÁGINA E IDENTIDADE VISUAL
+# 1. CONFIGURAÇÃO DA PÁGINA
 # ==========================================
 st.set_page_config(page_title="Financeiro COMUNA", page_icon="⛪", layout="wide")
 
@@ -22,76 +22,79 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CONEXÃO COM BANCO DE DADOS
+# 2. CREDENCIAIS E CONEXÃO SEGURA DIRETA
 # ==========================================
-@st.cache_resource
-def init_connection():
-    url = st.secrets.get("SUPABASE_URL", "")
-    key = st.secrets.get("SUPABASE_KEY", "")
-    if not url or not key:
-        return None
-    return create_client(url, key)
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
 
-supabase = init_connection()
-
-if not supabase:
-    st.error("⚠️ Conexão com Supabase não encontrada. Verifique os Secrets.")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    st.error("⚠️ Credenciais do Supabase não configuradas nos Secrets.")
     st.stop()
 
-# ==========================================
-# 3. FUNÇÕES DE DADOS BLINDADAS (Anti-Erro PGRST125)
-# ==========================================
-@st.cache_data(ttl=300)
-def carregar_categorias():
+# Cliente padrão para Storage (Upload de comprovantes)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Função auxiliar para requisições HTTP diretas (Bypass total de bugs do Postgrest-py)
+def sb_request(tabela, metodo="GET", payload=None):
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
+    url = f"{SUPABASE_URL}/rest/v1/{tabela}"
     try:
-        res = supabase.table("categorias").select("id, nome, tipo, codigo_contabil").execute()
-        data = getattr(res, 'data', None)
-        
-        if not data:
-            padroes = [
-                {"nome": "Dízimos e Ofertas", "tipo": "Entrada", "codigo_contabil": "3.2.10.01"},
-                {"nome": "Missões", "tipo": "Saída", "codigo_contabil": "3.2.20.50"},
-                {"nome": "Gestão de Pessoas", "tipo": "Saída", "codigo_contabil": "3.2.20.10"},
-                {"nome": "Aluguel", "tipo": "Saída", "codigo_contabil": "3.2.20.101"},
-                {"nome": "Consumo (Água, Luz)", "tipo": "Saída", "codigo_contabil": "3.2.20.15"},
-                {"nome": "Manutenção do Patrimônio", "tipo": "Saída", "codigo_contabil": "3.2.20.30"},
-                {"nome": "Eventos", "tipo": "Saída", "codigo_contabil": "3.2.20.40"}
-            ]
-            supabase.table("categorias").insert(padroes).execute()
-            res = supabase.table("categorias").select("id, nome, tipo, codigo_contabil").execute()
-            data = getattr(res, 'data', [])
-            
-        return data if data else []
+        if metodo == "GET":
+            res = requests.get(url, headers=headers)
+            return res.json() if res.status_code == 200 else []
+        elif metodo == "POST":
+            res = requests.post(url, headers=headers, json=payload)
+            return res.json() if res.status_code in [200, 201] else None
     except Exception as e:
-        st.warning(f"Aviso de carregamento de categorias: {e}")
         return []
 
-@st.cache_data(ttl=300)
+# ==========================================
+# 3. FUNÇÕES DE DADOS BLINDADAS
+# ==========================================
+@st.cache_data(ttl=60)
+def carregar_categorias():
+    data = sb_request("categorias", "GET")
+    if not data or not isinstance(data, list) or len(data) == 0:
+        padroes = [
+            {"nome": "Dízimos e Ofertas", "tipo": "Entrada", "codigo_contabil": "3.2.10.01"},
+            {"nome": "Missões", "tipo": "Saída", "codigo_contabil": "3.2.20.50"},
+            {"nome": "Gestão de Pessoas", "tipo": "Saída", "codigo_contabil": "3.2.20.10"},
+            {"nome": "Aluguel", "tipo": "Saída", "codigo_contabil": "3.2.20.101"},
+            {"nome": "Consumo (Água, Luz)", "tipo": "Saída", "codigo_contabil": "3.2.20.15"},
+            {"nome": "Manutenção do Patrimônio", "tipo": "Saída", "codigo_contabil": "3.2.20.30"},
+            {"nome": "Eventos", "tipo": "Saída", "codigo_contabil": "3.2.20.40"}
+        ]
+        sb_request("categorias", "POST", padroes)
+        data = sb_request("categorias", "GET")
+    return data if isinstance(data, list) else []
+
+@st.cache_data(ttl=60)
 def carregar_lancamentos():
-    try:
-        res_lanc = supabase.table("lancamentos").select("*").execute()
-        lanc_data = getattr(res_lanc, 'data', None)
-        
-        if not lanc_data:
-            return pd.DataFrame()
-            
-        df = pd.DataFrame(lanc_data)
-        df['valor'] = pd.to_numeric(df['valor'], errors='coerce').fillna(0.0)
-        df['data_competencia'] = pd.to_datetime(df['data_competencia'], errors='coerce')
-        df['mes_ano'] = df['data_competencia'].dt.strftime('%Y-%m').fillna('Desconhecido')
-        
-        # Mapeia categorias de forma segura via Python para evitar joins problemáticos na API
-        cats = carregar_categorias()
-        if cats:
-            map_cat = {str(c['id']): c['nome'] for c in cats}
-            df['categoria_nome'] = df['categoria_id'].astype(str).map(map_cat).fillna('Sem Categoria')
-        else:
-            df['categoria_nome'] = 'Sem Categoria'
-            
-        return df
-    except Exception as e:
-        st.warning(f"Aviso ao carregar lançamentos: {e}")
+    lanc_data = sb_request("lancamentos", "GET")
+    if not lanc_data or not isinstance(lanc_data, list):
         return pd.DataFrame()
+        
+    df = pd.DataFrame(lanc_data)
+    if df.empty:
+        return df
+        
+    df['valor'] = pd.to_numeric(df['valor'], errors='coerce').fillna(0.0)
+    df['data_competencia'] = pd.to_datetime(df['data_competencia'], errors='coerce')
+    df['mes_ano'] = df['data_competencia'].dt.strftime('%Y-%m').fillna('Desconhecido')
+    
+    cats = carregar_categorias()
+    if cats:
+        map_cat = {str(c.get('id')): c.get('nome') for c in cats}
+        df['categoria_nome'] = df['categoria_id'].astype(str).map(map_cat).fillna('Sem Categoria')
+    else:
+        df['categoria_nome'] = 'Sem Categoria'
+        
+    return df
 
 categorias_db = carregar_categorias()
 df_lancamentos = carregar_lancamentos()
@@ -102,11 +105,9 @@ df_lancamentos = carregar_lancamentos()
 def comprimir_e_fazer_upload(arquivo_upload):
     if arquivo_upload is None:
         return None
-    
     nome_arquivo = f"{int(time.time())}_{arquivo_upload.name.replace(' ', '_')}"
     extensao = nome_arquivo.split('.')[-1].lower()
     bytes_data = arquivo_upload.getvalue()
-    
     try:
         if extensao in ['jpg', 'jpeg', 'png']:
             img = Image.open(io.BytesIO(bytes_data))
@@ -137,7 +138,7 @@ menu = st.sidebar.radio("Navegação", [
 ])
 
 # ------------------------------------------
-# TELA 1: LANÇAMENTOS (Simples e Rápida)
+# TELA 1: LANÇAMENTOS
 # ------------------------------------------
 if menu == "📝 Lançar Movimentação":
     st.title("Caixa Diário")
@@ -178,7 +179,7 @@ if menu == "📝 Lançar Movimentação":
                         "centro_custo": None if tag == "Nenhum" else tag,
                         "url_anexo": url_anexo
                     }
-                    supabase.table("lancamentos").insert(dados).execute()
+                    sb_request("lancamentos", "POST", dados)
                     st.cache_data.clear()
                     st.success("✅ Registrado com sucesso!")
                     time.sleep(1)
@@ -191,7 +192,7 @@ elif menu == "📊 Dashboard Congregacional":
     st.title("Visão de Saúde Financeira")
     
     if df_lancamentos.empty:
-        st.info("Nenhum lançamento registrado ainda. Utilize a aba de lançamentos para comecar.")
+        st.info("Nenhum lançamento registrado ainda. Utilize a aba de lançamentos para começar.")
     else:
         st.write("### Filtros")
         col_f1, col_f2 = st.columns(2)
