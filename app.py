@@ -30,12 +30,7 @@ def init_connection():
     key = st.secrets.get("SUPABASE_KEY", "")
     if not url or not key:
         return None
-    # Usa o ClientOptions oficial do Supabase para injetar a chave com segurança
-    return create_client(
-        url, 
-        key, 
-        options=ClientOptions(headers={"apikey": key, "Authorization": f"Bearer {key}"})
-    )
+    return create_client(url, key)
 
 supabase = init_connection()
 
