@@ -798,7 +798,9 @@ elif page == "Visão Consolidada":
         for col in pivot_ent_fmt.columns:
             pivot_ent_fmt[col] = pivot_ent_fmt[col].apply(fmt_inteiro_moeda)
         
-        st.dataframe(pivot_ent_fmt, use_container_width=True)
+        # Altura dinâmica para exibir todas as linhas sem scroll interno
+        altura_ent = (len(pivot_ent_fmt) + 1) * 35 + 38
+        st.dataframe(pivot_ent_fmt, use_container_width=True, height=altura_ent)
 
     with tab_ex2:
         cats_saida = [c['nome'] for c in categorias_db if c['tipo'] == 'Saída']
@@ -827,7 +829,9 @@ elif page == "Visão Consolidada":
         for col in pivot_sai_fmt.columns:
             pivot_sai_fmt[col] = pivot_sai_fmt[col].apply(fmt_inteiro_moeda)
 
-        st.dataframe(pivot_sai_fmt, use_container_width=True)
+        # Altura dinâmica para exibir todas as linhas sem scroll interno
+        altura_sai = (len(pivot_sai_fmt) + 1) * 35 + 38
+        st.dataframe(pivot_sai_fmt, use_container_width=True, height=altura_sai)
 
     with tab_ex3:
         tot_ent = []
@@ -1024,7 +1028,6 @@ elif page == "Visão Consolidada":
                 data=excel_detalhe,
                 file_name=f"Detalhes_{ano_sel}_{mes_drill}_{cat_drill}.xlsx".replace(" ", "_"),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-# ==========================================
 # ==========================================
 # ==========================================
 # TESOURARIA (COM ANEXO MANDATÓRIO PARA PAGAR E OPCIONAL PARA RECEBER)
