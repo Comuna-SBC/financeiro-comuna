@@ -1934,6 +1934,7 @@ elif page == "Painel de Eventos":
 
     col_novo, col_edit = st.columns(2)
     with col_novo:
+        with col_novo:
         with st.expander("➕ Criar Novo Evento", expanded=len(eventos_db) == 0):
             with st.form("form_evento", clear_on_submit=True):
                 nome_ev = st.text_input("Nome do Evento")
@@ -1949,14 +1950,17 @@ elif page == "Painel de Eventos":
                 vagas_ev = st.number_input("Total de Vagas", min_value=0, step=1)
                 chave_pix_ev = st.text_input("Chave Pix")
                 descricao_ev = st.text_area("Descrição/Orientações")
+                
                 permite_parc = st.checkbox("Permitir parcelamento")
-                num_parc = st.number_input("Máx. Parcelas", min_value=1, max_value=12, value=1, disabled=not permite_parc)
+                num_parc = st.number_input("Máx. Parcelas", min_value=1, max_value=12, value=1)
 
                 if st.form_submit_button("Criar Evento", use_container_width=True):
                     if not nome_ev.strip() or valor_ev <= 0 or vagas_ev <= 0 or not chave_pix_ev.strip():
                         st.warning("Preencha Nome, Valor > 0, Vagas > 0 e Chave Pix.")
                     else:
                         lider_id_val = lideres_opcoes.get(lider_sel) if lider_sel != "Nenhum" else None
+                        total_parcelas = int(num_parc) if permite_parc else 1
+                        
                         sb_request("eventos", "POST", {
                             "nome": nome_ev.strip(), "descricao": descricao_ev.strip() or None,
                             "codigo_receita_contabil": codigo_rec_ev,
@@ -1965,7 +1969,7 @@ elif page == "Painel de Eventos":
                             "data_evento": str(data_ev), "valor_inscricao": float(valor_ev),
                             "vagas_total": int(vagas_ev), "chave_pix": chave_pix_ev.strip(),
                             "centro_custo": nome_ev.strip(), "status": "Aberto",
-                            "permite_parcelamento": bool(permite_parc), "numero_parcelas": int(num_parc) if permite_parc else 1
+                            "permite_parcelamento": bool(permite_parc), "numero_parcelas": total_parcelas
                         })
                         st.cache_data.clear(); st.success("Evento criado!"); time.sleep(1); st.rerun()
 
