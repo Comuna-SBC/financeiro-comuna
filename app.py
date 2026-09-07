@@ -1279,7 +1279,7 @@ elif page == "Tesouraria":
         if df.empty:
             st.info("Nenhum lançamento registrado.")
         else:
-            st.markdown("### Filtros do Histórico")
+            st.markdown("### Filtros de Lançamentos")
             col_f1, col_f2, col_f3, col_f4 = st.columns(4)
             start_date = date.today().replace(day=1)
             end_date = (pd.Timestamp.today() + pd.offsets.MonthEnd(1)).date()
@@ -1295,38 +1295,114 @@ elif page == "Tesouraria":
             if dff.empty:
                 st.info("Nenhum lançamento encontrado para os filtros selecionados.")
             else:
-                dff['ordem_tipo'] = dff['tipo'].map({'Entrada': 0, 'Saída': 1})
+                dff['ordem_tipo'] = dff['tipo'].map({'Saída': 0, 'Entrada': 1})
                 dff = dff.sort_values(by=['ordem_tipo', 'data_competencia'], ascending=[True, False])
                 
-                exibir = dff[['id', 'data_competencia', 'tipo', 'descricao', 'categoria_nome', 'valor', 'status', 'centro_custo', 'conta_nome']].copy()
-                exibir['Data'] = exibir['data_competencia'].dt.strftime('%d.%m.%Y')
-                exibir['Valor (R$)'] = exibir['valor'].apply(fmt_moeda)
-                exibir.insert(0, '✏️ Editar', False)
-                exibir = exibir[['✏️ Editar', 'Data', 'tipo', 'descricao', 'categoria_nome', 'Valor (R$)', 'status', 'centro_custo', 'conta_nome', 'id']]
+                st.markdown("---")
+                st.markdown("#### Lista de Lançamentos e Comprovantes")
                 
-                editado = st.data_editor(exibir, hide_index=True, use_container_width=True, key="editor_hist_novo", column_config={"id": None})
-                selecionados = editado[editado['✏️ Editar'] == True]
+                # Pré-carrega todos os anexos para cruzamento rápido em memória
+                todos_anexos = sb_request("lancamento_anexos", "GET")
+                mapa_anexos = {}
+                if todos_anexos:
+                    for anexo in todos_anexos:
+                        l_id = anexo['lancamento_id']
+                        if l_id not in mapa_anexos:
+                            mapa_anexos[l_id] = []
+                        mapa_anexos[l_id].append(anexo)
+
+                # Cabeçalho customizado idêntico ao da Visão Consolidada
+                header_cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2])
+                header_cols[0].markdown("**Tipo**")
+                header_cols[1].markdown("**Data**")
+                header_cols[2].markdown("**Descrição**")
+                header_cols[3].markdown("**Categoria**")
+                header_cols[4].markdown("**Valor**")
+                header_cols[5].markdown("**Conta**")
+                header_cols[6].markdown("**Documento**")
+                st.markdown("<hr style='margin:4px 0;border-color:#CBD5E1;'>", unsafe_allow_html=True)
+
+                for _, row in dff.iterrows():
+                    row_id = str(row['id'])
+                    cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2])
+                    
+                    cols[0].markdown(f"<div class='drill-row'>{row['tipo']}</div>", unsafe_allow_html=True)
+                    cols[1].markdown(f"<div class='drill-row'>{row['data_competencia'].strftime('%d/%m/%Y')}</div>", unsafe_allow_html=True)
+                    cols[2].markdown(f"<div class='drill-row'>{row['descricao'] or '—'}</div>", unsafe_allow_html=True)
+                    cols[3].markdown(f"<div class='drill-row'>{row['categoria_nome']}</div>", unsafe_allow_html=True)
+                    cols[4].markdown(f"<div class='drill-row'>{fmt_moeda(row['valor'])}</div>", unsafe_allow_html=True)
+                    cols[5].markdown(f"<div class='drill-row'>{row['conta_nome']}</div>", unsafe_allow_html=True)
+                    
+                    # Coleta anexos da tabela nova ou do legado
+                    anexos_deste = mapa_anexos.get(row_id, [])
+                    if not anexos_deste and row.get('url_anexo') and isinstance(row.get('url_anexo'), str) and row.get('url_anexo').strip():
+                        anexos_deste = [{
+                            'id': 'legacy',
+                            'url_storage': row.get('url_anexo'),
+                            'nome_original': row.get('url_anexo').split('/')[-1]
+                        }]
+
+                    if len(anexos_deste) > 0:
+                        if cols[6].button(f"📎 {len(anexos_deste)} anexo(s)", key=f"btn_hist_anexos_{row_id}", help="Ver/Gerenciar anexos"):
+                            st.session_state[f"show_hist_anexo_{row_id}"] = not st.session_state.get(f"show_hist_anexo_{row_id}", False)
+                            st.rerun()
+                    else:
+                        cols[6].markdown("<div class='drill-row' style='color: #64748B;'>Sem anexo</div>", unsafe_allow_html=True)
+
+                    # Painel expansível de gestão de anexos
+                    if st.session_state.get(f"show_hist_anexo_{row_id}", False):
+                        with st.container(border=True):
+                            st.markdown(f"**Gerenciar Anexos - {row['descricao']}**")
+                            for anexo in anexos_deste:
+                                col_g1, col_g2 = st.columns([3, 1])
+                                link_dl = obter_link_arquivo(anexo['url_storage'])
+                                nome_ex = anexo.get('nome_original') or anexo['url_storage'].split('/')[-1]
+                                
+                                if link_dl:
+                                    col_g1.markdown(f"📄 [{nome_ex}]({link_dl})", unsafe_allow_html=True)
+                                else:
+                                    col_g1.write(nome_ex)
+                                    
+                                if anexo.get('id') == 'legacy':
+                                    if col_g2.button("🗑️ Apagar", key=f"del_leg_hist_{row_id}"):
+                                        try:
+                                            supabase.storage.from_("comprovantes").remove([anexo['url_storage']])
+                                            sb_request("lancamentos", "PATCH", {"url_anexo": None}, filtros={"id": f"eq.{row_id}"})
+                                            st.cache_data.clear()
+                                            st.success("Anexo excluído!")
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Erro: {e}")
+                                else:
+                                    if col_g2.button("🗑️ Apagar", key=f"del_novo_hist_{anexo['id']}"):
+                                        try:
+                                            supabase.storage.from_("comprovantes").remove([anexo['url_storage']])
+                                            sb_request("lancamento_anexos", "DELETE", filtros={"id": f"eq.{anexo['id']}"})
+                                            st.cache_data.clear()
+                                            st.success("Anexo excluído!")
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Erro: {e}")
+                                            
+                            if st.button("Fechar Gerenciador", key=f"close_hist_{row_id}"):
+                                st.session_state[f"show_hist_anexo_{row_id}"] = False
+                                st.rerun()
+                    
+                    st.markdown("<hr style='margin:2px 0;border-color:#F1F5F9;'>", unsafe_allow_html=True)
+
+                st.markdown("")
+                exibir_export = dff[['tipo', 'data_competencia', 'descricao', 'categoria_nome', 'valor', 'conta_nome', 'status']].copy()
+                exibir_export['data_competencia'] = exibir_export['data_competencia'].dt.strftime('%d/%m/%Y')
+                exibir_export.columns = ['Tipo', 'Data', 'Descrição', 'Categoria', 'Valor', 'Conta', 'Situação']
                 
-                if len(selecionados) == 1:
-                    id_lanc = str(selecionados.iloc[0]['id'])
-                    lanc_raw = next((l for l in carregar("lancamentos") if str(l.get('id')) == id_lanc), None)
-                    if lanc_raw:
-                        st.markdown("---")
-                        st.markdown(f"#### Editando: {lanc_raw.get('descricao', '')}")
-                        with st.form(f"form_ed_{id_lanc}"):
-                            n_desc = st.text_input("Descrição", value=lanc_raw.get('descricao', ''))
-                            n_valor = st.number_input("Valor (R$)", value=float(lanc_raw.get('valor') or 0), format="%.2f")
-                            
-                            c_b1, c_b2 = st.columns(2)
-                            btn_upd = c_b1.form_submit_button("💾 Salvar Alterações", use_container_width=True)
-                            btn_del = c_b2.form_submit_button("🗑️ Excluir", use_container_width=True)
-                            
-                            if btn_upd:
-                                sb_request("lancamentos", "PATCH", {"descricao": n_desc, "valor": float(n_valor)}, filtros={"id": f"eq.{id_lanc}"})
-                                st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1); st.rerun()
-                            if btn_del:
-                                sb_request("lancamentos", "DELETE", filtros={"id": f"eq.{id_lanc}"})
-                                st.cache_data.clear(); st.success("Excluído!"); time.sleep(1); st.rerun()
+                excel_detalhe = to_excel_bytes({"Lancamentos": exibir_export})
+                st.download_button(
+                    label="💾 Baixar Tabela Selecionada (Excel)",
+                    data=excel_detalhe,
+                    file_name=f"Lancamentos_Filtro.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="btn_dl_lanc_filtro"
+                )
 
     with tab4:
         st.markdown("### Gerenciamento de Regras Recorrentes (Despesas/Receitas Fixas)")
