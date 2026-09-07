@@ -1280,25 +1280,49 @@ elif page == "Tesouraria":
             st.info("Nenhum lançamento registrado.")
         else:
             st.markdown("### Filtros de Lançamentos")
-            col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+            
+            # 5 colunas de filtros: De, Até, Tipo, Situação, Categoria
+            col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
             start_date = date.today().replace(day=1)
             end_date = (pd.Timestamp.today() + pd.offsets.MonthEnd(1)).date()
             
             data_inicio = col_f1.date_input("De", start_date, format="DD.MM.YYYY", key="hist_dt_ini")
             data_fim = col_f2.date_input("Até", end_date, format="DD.MM.YYYY", key="hist_dt_fim")
             filtro_tipo = col_f3.multiselect("Tipo", ["Entrada", "Saída"], default=["Entrada", "Saída"], key="hist_ft_tipo")
-            filtro_status = col_f4.multiselect("Situação", df['status'].unique().tolist(), default=df['status'].unique().tolist(), key="hist_ft_status")
             
+            status_unicos = df['status'].unique().tolist() if 'status' in df.columns else []
+            filtro_status = col_f4.multiselect("Situação", status_unicos, default=status_unicos, key="hist_ft_status")
+            
+            categorias_unicas = sorted(df['categoria_nome'].dropna().unique().tolist()) if 'categoria_nome' in df.columns else []
+            filtro_categorias = col_f5.multiselect("Categoria", categorias_unicas, default=categorias_unicas, key="hist_ft_cat")
+            
+            # Aplicação dos filtros
             mask_data = (df['data_competencia'].dt.date >= data_inicio) & (df['data_competencia'].dt.date <= data_fim)
-            dff = df[mask_data & df['tipo'].isin(filtro_tipo) & df['status'].isin(filtro_status)].copy()
+            dff = df[
+                mask_data & 
+                df['tipo'].isin(filtro_tipo) & 
+                df['status'].isin(filtro_status) & 
+                df['categoria_nome'].isin(filtro_categorias)
+            ].copy()
             
             if dff.empty:
                 st.info("Nenhum lançamento encontrado para os filtros selecionados.")
             else:
+                # Soma dinâmica dos filtrados (Entradas somam, Saídas subtraem)
+                total_entradas_filt = dff[dff['tipo'] == 'Entrada']['valor'].sum()
+                total_saidas_filt = dff[dff['tipo'] == 'Saída']['valor'].sum()
+                saldo_filtrado = total_entradas_filt - total_saidas_filt
+
+                # Exibe a métrica dinâmica do filtro
+                st.markdown("")
+                col_m1, col_m2, col_m3 = st.columns([1.5, 1.5, 3])
+                col_m1.metric("Total Filtrado (Líquido)", fmt_moeda(saldo_filtrado))
+                col_m2.metric("Qtd. Registros", str(len(dff)))
+                st.markdown("---")
+
                 dff['ordem_tipo'] = dff['tipo'].map({'Saída': 0, 'Entrada': 1})
                 dff = dff.sort_values(by=['ordem_tipo', 'data_competencia'], ascending=[True, False])
                 
-                st.markdown("---")
                 st.markdown("#### Lista de Lançamentos e Comprovantes")
                 
                 # Pré-carrega todos os anexos para cruzamento rápido em memória
@@ -1311,8 +1335,8 @@ elif page == "Tesouraria":
                             mapa_anexos[l_id] = []
                         mapa_anexos[l_id].append(anexo)
 
-                # Cabeçalho customizado idêntico ao da Visão Consolidada
-                header_cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2])
+                # Cabeçalho customizado (última coluna para o lápis de edição)
+                header_cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2, 0.8])
                 header_cols[0].markdown("**Tipo**")
                 header_cols[1].markdown("**Data**")
                 header_cols[2].markdown("**Descrição**")
@@ -1320,11 +1344,12 @@ elif page == "Tesouraria":
                 header_cols[4].markdown("**Valor**")
                 header_cols[5].markdown("**Conta**")
                 header_cols[6].markdown("**Documento**")
+                header_cols[7].markdown("**Editar**")
                 st.markdown("<hr style='margin:4px 0;border-color:#CBD5E1;'>", unsafe_allow_html=True)
 
                 for _, row in dff.iterrows():
                     row_id = str(row['id'])
-                    cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2])
+                    cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2, 0.8])
                     
                     cols[0].markdown(f"<div class='drill-row'>{row['tipo']}</div>", unsafe_allow_html=True)
                     cols[1].markdown(f"<div class='drill-row'>{row['data_competencia'].strftime('%d/%m/%Y')}</div>", unsafe_allow_html=True)
@@ -1348,6 +1373,11 @@ elif page == "Tesouraria":
                             st.rerun()
                     else:
                         cols[6].markdown("<div class='drill-row' style='color: #64748B;'>Sem anexo</div>", unsafe_allow_html=True)
+
+                    # Coluna do Lápis para disparar a edição
+                    if cols[7].button("✏️", key=f"btn_edit_lapis_{row_id}", help="Editar Lançamento"):
+                        st.session_state[f"edit_lanc_ativo"] = row_id
+                        st.rerun()
 
                     # Painel expansível de gestão de anexos
                     if st.session_state.get(f"show_hist_anexo_{row_id}", False):
@@ -1387,6 +1417,32 @@ elif page == "Tesouraria":
                             if st.button("Fechar Gerenciador", key=f"close_hist_{row_id}"):
                                 st.session_state[f"show_hist_anexo_{row_id}"] = False
                                 st.rerun()
+
+                    # Bloco de edição ativado pelo clique no ícone de lápis
+                    if st.session_state.get(f"edit_lanc_ativo") == row_id:
+                        with st.container(border=True):
+                            st.markdown(f"#### ✏️ Editando Lançamento: {row.get('descricao', '')}")
+                            lanc_raw = next((l for l in carregar("lancamentos") if str(l.get('id')) == row_id), row)
+                            with st.form(f"form_ed_lapis_{row_id}"):
+                                n_desc = st.text_input("Descrição", value=lanc_raw.get('descricao', ''))
+                                n_valor = st.number_input("Valor (R$)", value=float(lanc_raw.get('valor') or 0), format="%.2f")
+                                
+                                c_b1, c_b2, c_b3 = st.columns(3)
+                                btn_upd = c_b1.form_submit_button("💾 Salvar", use_container_width=True)
+                                btn_del = c_b2.form_submit_button("🗑️ Excluir", use_container_width=True)
+                                btn_canc = c_b3.form_submit_button("❌ Fechar", use_container_width=True)
+                                
+                                if btn_upd:
+                                    sb_request("lancamentos", "PATCH", {"descricao": n_desc, "valor": float(n_valor)}, filtros={"id": f"eq.{row_id}"})
+                                    st.session_state[f"edit_lanc_ativo"] = None
+                                    st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1); st.rerun()
+                                if btn_del:
+                                    sb_request("lancamentos", "DELETE", filtros={"id": f"eq.{row_id}"})
+                                    st.session_state[f"edit_lanc_ativo"] = None
+                                    st.cache_data.clear(); st.success("Excluído!"); time.sleep(1); st.rerun()
+                                if btn_canc:
+                                    st.session_state[f"edit_lanc_ativo"] = None
+                                    st.rerun()
                     
                     st.markdown("<hr style='margin:2px 0;border-color:#F1F5F9;'>", unsafe_allow_html=True)
 
