@@ -1151,6 +1151,15 @@ elif page == "Tesouraria":
             if pend_pagar.empty:
                 st.success("Nenhuma conta a pagar pendente. 👍")
             else:
+                # Cabeçalho customizado para Contas a Pagar
+                h_pagar = st.columns([3, 1.4, 1.4, 1.4, 1.2])
+                h_pagar[0].markdown("**Descrição / Categoria**")
+                h_pagar[1].markdown("**Valor**")
+                h_pagar[2].markdown("**Vencimento**")
+                h_pagar[3].markdown("**Situação**")
+                h_pagar[4].markdown("**Ação**")
+                st.markdown("<hr style='margin:4px 0;border-color:#CBD5E1;'>", unsafe_allow_html=True)
+
                 for idx, (_, row) in enumerate(pend_pagar.iterrows()):
                     venc = row['data_vencimento']
                     situacao = "🔴 Atrasado" if pd.notna(venc) and venc < hoje else ("🟡 Vence hoje" if venc == hoje else "🟢 A vencer")
@@ -1206,6 +1215,15 @@ elif page == "Tesouraria":
             if pend_receber.empty:
                 st.success("Nenhuma conta a receber pendente. 👍")
             else:
+                # Cabeçalho customizado para Contas a Receber
+                h_receber = st.columns([3, 1.4, 1.4, 1.4, 1.2])
+                h_receber[0].markdown("**Descrição / Categoria**")
+                h_receber[1].markdown("**Valor**")
+                h_receber[2].markdown("**Vencimento**")
+                h_receber[3].markdown("**Situação**")
+                h_receber[4].markdown("**Ação**")
+                st.markdown("<hr style='margin:4px 0;border-color:#CBD5E1;'>", unsafe_allow_html=True)
+
                 for idx, (_, row) in enumerate(pend_receber.iterrows()):
                     venc = row['data_vencimento']
                     situacao = "🔴 Atrasado" if pd.notna(venc) and venc < hoje else ("🟡 Vence hoje" if venc == hoje else "🟢 A vencer")
@@ -1251,7 +1269,6 @@ elif page == "Tesouraria":
                             if col_b2.button("❌ Cancelar", key=f"canc_receber_{row_id}_{idx}"):
                                 st.session_state[session_key_rec] = False
                                 st.rerun()
-
     with tab3:
         df = carregar_lancamentos_df()
         if df.empty:
