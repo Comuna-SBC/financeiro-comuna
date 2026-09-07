@@ -475,17 +475,36 @@ contas_bancarias_db = carregar("contas_bancarias")
 if "page" not in st.session_state:
     st.session_state.page = "Resumo do Dia"
 
-# CSS para forçar alinhamento à esquerda e compactar o espaço vertical dos botões
+# CSS refinado para alinhar de verdade o texto e o ícone à esquerda do botão
 st.sidebar.markdown("""
     <style>
     div[data-testid="stSidebarNav"] {display: none;}
+    
+    /* Força o container do botão a alinhar à esquerda */
     .stButton > button {
+        display: flex !important;
         justify-content: flex-start !important;
+        align-items: center !important;
         text-align: left !important;
         padding-top: 0.3rem !important;
         padding-bottom: 0.3rem !important;
+        padding-left: 0.6rem !important;
         min-height: 2rem !important;
         margin-bottom: -0.2rem !important;
+        width: 100% !important;
+    }
+    
+    /* Força o elemento de texto interno do Streamlit a não centralizar */
+    .stButton > button div {
+        display: flex !important;
+        justify-content: flex-start !important;
+        align-items: center !important;
+        width: 100% !important;
+    }
+    
+    .stButton > button p {
+        text-align: left !important;
+        margin: 0 !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -526,6 +545,9 @@ st.sidebar.markdown("<hr style='margin: 8px 0 4px 0; border-color: #E2E8F0;'>", 
 st.sidebar.caption("Gestão Financeira • Final")
 
 page = st.session_state.page
+
+
+
 # ==========================================
 # RESUMO DO DIA 
 # ==========================================
