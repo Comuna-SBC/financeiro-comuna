@@ -991,9 +991,9 @@ elif page == "Tesouraria":
                             "recorrente": bool(recorrente)
                         }
                         
-                        # Se for recorrente, envia os campos usando o nome exato da sua coluna existente
+                        # Se for recorrente, envia usando os nomes exatos das suas colunas no banco
                         if recorrente:
-                            payload_lanc["dia_vencimento"] = int(dia_vencimento)
+                            payload_lanc["dia_vencimento_fixo"] = int(dia_vencimento)
                             payload_lanc["data_fim_recorrencia"] = str(data_fim_rec)
 
                         if status_lanc == "Concluído":
