@@ -617,6 +617,8 @@ if page == "Resumo do Dia":
 # ==========================================
 # ==========================================
 ## ==========================================
+# ==========================================
+# VISÃO CONSOLIDADA
 elif page == "Visão Consolidada":
     st.title("📋 Visão Consolidada")
     st.markdown("Acompanhe o balanço mensal de Entradas e Saídas consolidado por categoria.")
@@ -732,15 +734,24 @@ elif page == "Visão Consolidada":
     st.markdown("### 🔍 Detalhar Valores por Mês e Categoria")
     st.markdown("Selecione os filtros abaixo para ver detalhadamente quais itens compõem a soma e gerencie os comprovantes de cada despesa diretamente.")
 
-    # Estilo CSS compacto para ajustar a fonte e manter cada item em uma linha só
+    # Estilo CSS compacto atualizado para alinhar o botão e a linha perfeitamente
     st.markdown("""
         <style>
             .drill-row {
                 font-size: 13px !important;
-                padding: 2px 0px !important;
+                padding: 4px 0px !important;
                 white-space: nowrap !important;
                 overflow: hidden !important;
                 text-overflow: ellipsis !important;
+            }
+            /* Deixa os botões da tabela compactos e na altura exata da linha */
+            div.stButton > button {
+                padding: 2px 10px !important;
+                font-size: 12px !important;
+                min-height: 24px !important;
+                height: 28px !important;
+                line-height: 1 !important;
+                margin-top: 2px !important;
             }
         </style>
     """, unsafe_allow_html=True)
@@ -817,7 +828,7 @@ elif page == "Visão Consolidada":
                         st.session_state[f"show_vis_anexo_{row_id}"] = not st.session_state.get(f"show_vis_anexo_{row_id}", False)
                         st.rerun()
                 else:
-                    cols[6].markdown("<div class='drill-row'>Sem anexo</div>", unsafe_allow_html=True)
+                    cols[6].markdown("<div class='drill-row' style='color: #64748B;'>Sem anexo</div>", unsafe_allow_html=True)
 
                 # Painel expansível de gestão de anexos na Visão Consolidada
                 if st.session_state.get(f"show_vis_anexo_{row_id}", False):
