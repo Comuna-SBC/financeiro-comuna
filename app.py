@@ -965,17 +965,19 @@ elif page == "Tesouraria":
                 conta_sel = col6.selectbox("Conta Bancária", list(contas_opcoes.keys()), key="unico_conta")
                 tag = col7.selectbox("Projeto / Evento", ["Nenhum"] + [e['nome'] for e in eventos_db], key="unico_tag")
 
-            arquivo = st.file_uploader("Comprovante / Nota Fiscal (Opcional)", type=['png', 'jpg', 'jpeg', 'pdf'], key="lanc_arq_up")
-
-            # Substitua o uploader antigo por este:
-            arquivos = st.file_uploader("Comprovantes / Notas Fiscais (Permite múltiplos arquivos)", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True, key="lanc_arq_up_multiplo")
+            # Uploader unificado e limpo para múltiplos anexos
+            arquivos = st.file_uploader(
+                "Comprovantes / Notas Fiscais (Permite múltiplos arquivos)", 
+                type=['png', 'jpg', 'jpeg', 'pdf'], 
+                accept_multiple_files=True, 
+                key="lanc_arq_up_multiplo"
+            )
 
             if st.form_submit_button("💾 Salvar Lançamento", use_container_width=True, type="primary"):
                 if valor <= 0 or not descricao or not opcoes_cats:
                     st.warning("⚠️ Preencha descrição, valor e categoria corretamente.")
                 else:
                     with st.spinner("Salvando lançamento e anexos..."):
-                        # Define payload e insere o lançamento principal
                         payload_lanc = {
                             "descricao": descricao,
                             "tipo": tipo_lanc,
@@ -996,7 +998,6 @@ elif page == "Tesouraria":
                         
                         if res_lanc and len(res_lanc) > 0:
                             novo_id = res_lanc[0]['id']
-                            # Processa e salva os múltiplos anexos padronizados
                             if arquivos:
                                 processar_e_salvar_anexos(arquivos, novo_id, data_comp, categoria_sel, descricao)
                             
@@ -1044,21 +1045,23 @@ elif page == "Tesouraria":
                     if st.session_state.get(f"paying_{row_id}", False):
                         with st.container(border=True):
                             st.markdown(f"📎 **Anexo Obrigatório (Nota Fiscal/Comprovante) para:** {row['descricao']}")
-                            arq_pagar = st.file_uploader("Selecione o arquivo (PDF, PNG, JPG)", type=['png', 'jpg', 'jpeg', 'pdf'], key=f"file_pagar_{row_id}")
+                            arq_pagar_multiplos = st.file_uploader("Selecione os arquivos (Permite múltiplos)", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True, key=f"file_pagar_{row_id}")
                             
                             col_b1, col_b2 = st.columns(2)
                             if col_b1.button("💾 Confirmar Pagamento", key=f"conf_pagar_{row_id}", type="primary"):
-                                if not arq_pagar:
+                                if not arq_pagar_multiplos:
                                     st.error("⚠️ O anexo da nota fiscal/comprovante é **mandatório** para contas a pagar.")
                                 else:
-                                    with st.spinner("Enviando anexo e registrando pagamento..."):
-                                        url_anexo = comprimir_e_fazer_upload(arq_pagar, pasta="notas")
+                                    with st.spinner("Enviando anexos e registrando pagamento..."):
                                         res = sb_request("lancamentos", "PATCH", {
                                             "status": "Concluído", 
-                                            "data_pagamento": str(date.today()),
-                                            "url_anexo": url_anexo
+                                            "data_pagamento": str(date.today())
                                         }, filtros={"id": f"eq.{row_id}"})
+                                        
                                         if res is not None:
+                                            # Processa e salva os múltiplos anexos padronizados
+                                            processar_e_salvar_anexos(arq_pagar_multiplos, row_id, row['data_competencia'], row['categoria_nome'], row['descricao'])
+                                            
                                             st.session_state[f"paying_{row_id}"] = False
                                             st.cache_data.clear()
                                             st.success("Pagamento registrado com sucesso!")
@@ -1097,21 +1100,20 @@ elif page == "Tesouraria":
                     if st.session_state.get(f"receiving_{row_id}", False):
                         with st.container(border=True):
                             st.markdown(f"📎 **Anexo Opcional para:** {row['descricao']}")
-                            arq_receber = st.file_uploader("Selecione o arquivo se desejar anexar (Opcional)", type=['png', 'jpg', 'jpeg', 'pdf'], key=f"file_receber_{row_id}")
+                            arq_receber_multiplos = st.file_uploader("Selecione os arquivos se desejar anexar (Opcional)", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True, key=f"file_receber_{row_id}")
                             
                             col_b1, col_b2 = st.columns(2)
                             if col_b1.button("💾 Confirmar Recebimento", key=f"conf_receber_{row_id}", type="primary"):
                                 with st.spinner("Registrando recebimento..."):
-                                    url_anexo = comprimir_e_fazer_upload(arq_receber, pasta="notas") if arq_receber else None
-                                    payload = {
+                                    res = sb_request("lancamentos", "PATCH", {
                                         "status": "Concluído", 
                                         "data_pagamento": str(date.today())
-                                    }
-                                    if url_anexo:
-                                        payload["url_anexo"] = url_anexo
-                                        
-                                    res = sb_request("lancamentos", "PATCH", payload, filtros={"id": f"eq.{row_id}"})
+                                    }, filtros={"id": f"eq.{row_id}"})
+                                    
                                     if res is not None:
+                                        if arq_receber_multiplos:
+                                            processar_e_salvar_anexos(arq_receber_multiplos, row_id, row['data_competencia'], row['categoria_nome'], row['descricao'])
+                                            
                                         st.session_state[f"receiving_{row_id}"] = False
                                         st.cache_data.clear()
                                         st.success("Recebimento registrado com sucesso!")
