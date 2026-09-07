@@ -475,12 +475,18 @@ contas_bancarias_db = carregar("contas_bancarias")
 if "page" not in st.session_state:
     st.session_state.page = "Resumo do Dia"
 
-# CSS refinado com leve recuo à esquerda para um visual mais elegante
+# CSS para zerar o topo da barra lateral e alinhar os botões
 st.sidebar.markdown("""
     <style>
     div[data-testid="stSidebarNav"] {display: none;}
     
-    /* Força o container do botão a alinhar à esquerda com um pequeno recuo */
+    /* Remove o espaço em branco padrão no topo da barra lateral do Streamlit */
+    section[data-testid="stSidebar"] div.stMainBlockContainer,
+    section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {
+        padding-top: 0rem !important;
+    }
+    
+    /* Força o container do botão a alinhar à esquerda com o recuo ajustado */
     .stButton > button {
         display: flex !important;
         justify-content: flex-start !important;
@@ -488,7 +494,7 @@ st.sidebar.markdown("""
         text-align: left !important;
         padding-top: 0.3rem !important;
         padding-bottom: 0.3rem !important;
-        padding-left: 1.0rem !important; /* Recuo sutil para a direita */
+        padding-left: 1.0rem !important;
         min-height: 2rem !important;
         margin-bottom: -0.2rem !important;
         width: 100% !important;
