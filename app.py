@@ -748,17 +748,7 @@ elif page == "Visão Consolidada":
         anos_disp.append(ano_atual)
         anos_disp = sorted(anos_disp, reverse=True)
 
-    col_a1, col_a2 = st.columns([1, 3])
-    ano_sel = col_a1.selectbox("Ano de Referência", anos_disp)
-
     df_ano = df[df['data_competencia'].dt.year == ano_sel].copy() if not df.empty else pd.DataFrame()
-
-    tab_ex1, tab_ex2, tab_ex3 = st.tabs(["📥 Entradas por Categoria", "📤 Saídas por Categoria", "📊 Consolidado Bancário e Geral"])
-
-    # Estruturas para exportação
-    pivot_ent = pd.DataFrame()
-    pivot_sai = pd.DataFrame()
-    resumo_geral = pd.DataFrame(index=MESES_PT)
 
     meses_curtos = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
 
@@ -771,111 +761,120 @@ elif page == "Visão Consolidada":
         except:
             return str(val)
 
-    with tab_ex1:
-        cats_entrada = [c['nome'] for c in categorias_db if c['tipo'] == 'Entrada']
+    # Pré-cálculo das estruturas para o botão superior e abas
+    pivot_ent = pd.DataFrame()
+    pivot_sai = pd.DataFrame()
+    resumo_geral = pd.DataFrame(index=MESES_PT)
+
+    # Entradas
+    cats_entrada = [c['nome'] for c in categorias_db if c['tipo'] == 'Entrada']
+    if not df_ano.empty:
+        df_ent = df_ano[(df_ano['tipo'] == 'Entrada') & (df_ano['status'] == 'Concluído')]
+        if not df_ent.empty:
+            pivot_ent = pd.pivot_table(df_ent, values='valor', index='categoria_nome', columns='mes_num', aggfunc='sum', fill_value=0.0)
+
+    for m in range(1, 13):
+        if m not in pivot_ent.columns:
+            pivot_ent[m] = 0.0
+
+    for cat in cats_entrada:
+        if cat not in pivot_ent.index:
+            pivot_ent.loc[cat] = 0.0
+
+    pivot_ent = pivot_ent[[m for m in range(1, 13)]]
+    pivot_ent.columns = meses_curtos
+    pivot_ent['TOTAL ANUAL'] = pivot_ent.sum(axis=1)
+    pivot_ent.loc['TOTAL'] = pivot_ent.sum(numeric_only=True)
+
+    # Saídas
+    cats_saida = [c['nome'] for c in categorias_db if c['tipo'] == 'Saída']
+    if not df_ano.empty:
+        df_sai = df_ano[(df_ano['tipo'] == 'Saída') & (df_ano['status'] == 'Concluído')]
+        if not df_sai.empty:
+            pivot_sai = pd.pivot_table(df_sai, values='valor', index='categoria_nome', columns='mes_num', aggfunc='sum', fill_value=0.0)
+
+    for m in range(1, 13):
+        if m not in pivot_sai.columns:
+            pivot_sai[m] = 0.0
+
+    for cat in cats_saida:
+        if cat not in pivot_sai.index:
+            pivot_sai.loc[cat] = 0.0
+
+    pivot_sai = pivot_sai[[m for m in range(1, 13)]]
+    pivot_sai.columns = meses_curtos
+    pivot_sai['TOTAL ANUAL'] = pivot_sai.sum(axis=1)
+    pivot_sai.loc['TOTAL'] = pivot_sai.sum(numeric_only=True)
+
+    # Resumo Geral
+    tot_ent = []
+    tot_sai = []
+    for m_idx, m_nome in enumerate(MESES_PT, 1):
+        val_e = df_ano[(df_ano['mes_num'] == m_idx) & (df_ano['tipo'] == 'Entrada') & (df_ano['status'] == 'Concluído')]['valor'].sum() if not df_ano.empty else 0.0
+        val_s = df_ano[(df_ano['mes_num'] == m_idx) & (df_ano['tipo'] == 'Saída') & (df_ano['status'] == 'Concluído')]['valor'].sum() if not df_ano.empty else 0.0
+        tot_ent.append(val_e)
+        tot_sai.append(val_s)
         
+    resumo_geral['Total Entradas'] = tot_ent
+    resumo_geral['Total Saídas'] = tot_sai
+    resumo_geral['Resultado do Mês'] = resumo_geral['Total Entradas'] - resumo_geral['Total Saídas']
+    
+    saldo_acum = sum(float(c.get("saldo_inicial") or 0) for c in contas_bancarias_db)
+    saldos_mes = []
+    for res in resumo_geral['Resultado do Mês']:
+        saldo_acum += res
+        saldos_mes.append(saldo_acum)
+    resumo_geral['Saldo em Caixa Acumulado'] = saldos_mes
+
+    # Layout Superior: Ano de Referência à esquerda e Botão Exportar Excel à direita
+    col_a1, col_a2 = st.columns([3, 1])
+    ano_sel = col_a1.selectbox("Ano de Referência", anos_disp)
+
+    with col_a2:
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
         if not df_ano.empty:
-            df_ent = df_ano[(df_ano['tipo'] == 'Entrada') & (df_ano['status'] == 'Concluído')]
-            if not df_ent.empty:
-                pivot_ent = pd.pivot_table(df_ent, values='valor', index='categoria_nome', columns='mes_num', aggfunc='sum', fill_value=0.0)
+            dfs_export = {
+                "Entradas": pivot_ent,
+                "Saídas": pivot_sai,
+                "Resumo Geral": resumo_geral
+            }
+            excel_completo = to_excel_bytes(dfs_export)
+            st.download_button(
+                label="📥 Exportar Excel",
+                data=excel_completo,
+                file_name=f"Consolidado_{ano_sel}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                key="btn_export_topo"
+            )
 
-        for m in range(1, 13):
-            if m not in pivot_ent.columns:
-                pivot_ent[m] = 0.0
+    tab_ex1, tab_ex2, tab_ex3 = st.tabs(["📥 Entradas por Categoria", "📤 Saídas por Categoria", "📊 Consolidado Bancário e Geral"])
 
-        for cat in cats_entrada:
-            if cat not in pivot_ent.index:
-                pivot_ent.loc[cat] = 0.0
-
-        pivot_ent = pivot_ent[[m for m in range(1, 13)]]
-        pivot_ent.columns = meses_curtos
-        pivot_ent['TOTAL ANUAL'] = pivot_ent.sum(axis=1)
-        
-        # Linha de totais por coluna
-        pivot_ent.loc['TOTAL'] = pivot_ent.sum(numeric_only=True)
-
+    with tab_ex1:
         pivot_ent_fmt = pivot_ent.copy()
         for col in pivot_ent_fmt.columns:
             pivot_ent_fmt[col] = pivot_ent_fmt[col].apply(fmt_inteiro_moeda)
         
-        # Altura dinâmica para exibir todas as linhas sem scroll interno
         altura_ent = (len(pivot_ent_fmt) + 1) * 35 + 38
         st.dataframe(pivot_ent_fmt, use_container_width=True, height=altura_ent)
 
     with tab_ex2:
-        cats_saida = [c['nome'] for c in categorias_db if c['tipo'] == 'Saída']
-        
-        if not df_ano.empty:
-            df_sai = df_ano[(df_ano['tipo'] == 'Saída') & (df_ano['status'] == 'Concluído')]
-            if not df_sai.empty:
-                pivot_sai = pd.pivot_table(df_sai, values='valor', index='categoria_nome', columns='mes_num', aggfunc='sum', fill_value=0.0)
-
-        for m in range(1, 13):
-            if m not in pivot_sai.columns:
-                pivot_sai[m] = 0.0
-
-        for cat in cats_saida:
-            if cat not in pivot_sai.index:
-                pivot_sai.loc[cat] = 0.0
-
-        pivot_sai = pivot_sai[[m for m in range(1, 13)]]
-        pivot_sai.columns = meses_curtos
-        pivot_sai['TOTAL ANUAL'] = pivot_sai.sum(axis=1)
-
-        # Linha de totais por coluna
-        pivot_sai.loc['TOTAL'] = pivot_sai.sum(numeric_only=True)
-
         pivot_sai_fmt = pivot_sai.copy()
         for col in pivot_sai_fmt.columns:
             pivot_sai_fmt[col] = pivot_sai_fmt[col].apply(fmt_inteiro_moeda)
 
-        # Altura dinâmica para exibir todas as linhas sem scroll interno
         altura_sai = (len(pivot_sai_fmt) + 1) * 35 + 38
         st.dataframe(pivot_sai_fmt, use_container_width=True, height=altura_sai)
 
     with tab_ex3:
-        tot_ent = []
-        tot_sai = []
-        
-        for m_idx, m_nome in enumerate(MESES_PT, 1):
-            val_e = df_ano[(df_ano['mes_num'] == m_idx) & (df_ano['tipo'] == 'Entrada') & (df_ano['status'] == 'Concluído')]['valor'].sum() if not df_ano.empty else 0.0
-            val_s = df_ano[(df_ano['mes_num'] == m_idx) & (df_ano['tipo'] == 'Saída') & (df_ano['status'] == 'Concluído')]['valor'].sum() if not df_ano.empty else 0.0
-            tot_ent.append(val_e)
-            tot_sai.append(val_s)
-            
-        resumo_geral['Total Entradas'] = tot_ent
-        resumo_geral['Total Saídas'] = tot_sai
-        resumo_geral['Resultado do Mês'] = resumo_geral['Total Entradas'] - resumo_geral['Total Saídas']
-        
-        saldo_acum = sum(float(c.get("saldo_inicial") or 0) for c in contas_bancarias_db)
-        saldos_mes = []
-        for res in resumo_geral['Resultado do Mês']:
-            saldo_acum += res
-            saldos_mes.append(saldo_acum)
-        resumo_geral['Saldo em Caixa Acumulado'] = saldos_mes
+        resumo_geral_fmt = resumo_geral.copy()
+        for col in resumo_geral_fmt.columns:
+            resumo_geral_fmt[col] = resumo_geral_fmt[col].apply(fmt_inteiro_moeda)
 
-        st.dataframe(safe_map_moeda(resumo_geral), use_container_width=True)
+        altura_geral = (len(resumo_geral_fmt) + 1) * 35 + 38
+        st.dataframe(resumo_geral_fmt, use_container_width=True, height=altura_geral)
 
-    # 1. BOTÃO DE EXPORTAÇÃO GLOBAL
-    st.markdown("---")
-    st.markdown("### 📥 Exportar Consolidado")
-    
-    if not df_ano.empty:
-        dfs_export = {
-            "Entradas": pivot_ent,
-            "Saídas": pivot_sai,
-            "Resumo Geral": resumo_geral
-        }
-        excel_completo = to_excel_bytes(dfs_export)
-        st.download_button(
-            label="💾 Baixar Visão Completa (Excel)",
-            data=excel_completo,
-            file_name=f"Consolidado_{ano_sel}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
-
-    # 2. SEÇÃO DE DETALHAMENTO (DRILL-DOWN COM DOWNLOAD INDIVIDUAL)
+    # SEÇÃO DE DETALHAMENTO (DRILL-DOWN COM DOWNLOAD INDIVIDUAL)
     st.markdown("---")
     st.markdown("### 🔍 Detalhar Valores por Mês e Categoria")
     st.markdown("Selecione os filtros abaixo para ver detalhadamente quais itens compõem a soma e gerencie os comprovantes de cada despesa diretamente.")
@@ -1028,6 +1027,10 @@ elif page == "Visão Consolidada":
                 data=excel_detalhe,
                 file_name=f"Detalhes_{ano_sel}_{mes_drill}_{cat_drill}.xlsx".replace(" ", "_"),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+
+# ==========================================
 # ==========================================
 # ==========================================
 # TESOURARIA (COM ANEXO MANDATÓRIO PARA PAGAR E OPCIONAL PARA RECEBER)
