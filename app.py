@@ -1355,7 +1355,7 @@ elif page == "Conciliação Bancária":
                 
                 dff_manual = df_conta.copy()
                 if filtro_mes != "Todos":
-                    dff_manual = dff_manual[dff_manual['data_competencia'].dt.strftime('%Y-%m'] == filtro_mes]
+                    dff_manual = dff_manual[dff_manual['data_competencia'].dt.strftime('%Y-%m') == filtro_mes]
                 if apenas_nao_conciliados:
                     dff_manual = dff_manual[dff_manual['conciliado'] != True]
 
