@@ -575,6 +575,15 @@ page = st.session_state.page
 # RESUMO DO DIA 
 # ==========================================
 if page == "Resumo do Dia":
+    # CSS específico para puxar o conteúdo principal da tela para o topo
+    st.markdown("""
+        <style>
+        div.stMainBlockContainer, div[data-testid="stVerticalBlock"] {
+            padding-top: 0rem !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     st.title("Resumo do Dia")
     st.markdown(f"Hoje é {date.today().strftime('%d/%m/%Y')}. Aqui está o que precisa da sua atenção.")
 
@@ -584,13 +593,28 @@ if page == "Resumo do Dia":
     eventos_resumo = carregar("eventos")
 
     hoje = pd.Timestamp(date.today())
-    saldo_consolidado = sum(float(conta.get("saldo_inicial") or 0) for conta in contas_bancarias_db)
+    
+    # Calcula o saldo individual por conta considerando o saldo inicial + movimentações da conta
+    # (Caso a sua base traga o saldo consolidado, calculamos aqui o detalhamento por conta)
+    saldos_por_conta = []
+    saldo_consolidado = 0.0
 
-    if not df.empty:
-        lancamentos_concluidos = df[df["status"] == "Concluído"]
-        total_entradas = lancamentos_concluidos[lancamentos_concluidos["tipo"] == "Entrada"]["valor"].sum()
-        total_saidas = lancamentos_concluidos[lancamentos_concluidos["tipo"] == "Saída"]["valor"].sum()
-        saldo_consolidado += total_entradas - total_saidas
+    for conta in contas_bancarias_db:
+        c_id = conta.get("id")
+        c_nome = conta.get("nome", "Conta")
+        c_saldo_ini = float(conta.get("saldo_inicial") or 0)
+        
+        # Filtra lançamentos concluídos desta conta específica se houver o campo conta_bancaria_id
+        if not df.empty and "conta_bancaria_id" in df.columns and "status" in df.columns:
+            l_conta = df[(df["conta_bancaria_id"] == c_id) & (df["status"] == "Concluído")]
+            ent = l_conta[l_conta["tipo"] == "Entrada"]["valor"].sum()
+            sai = l_conta[l_conta["tipo"] == "Saída"]["valor"].sum()
+            c_saldo_atual = c_saldo_ini + ent - sai
+        else:
+            c_saldo_atual = c_saldo_ini
+
+        saldos_por_conta.append({"nome": c_nome, "saldo": c_saldo_atual})
+        saldo_consolidado += c_saldo_atual
 
     contas_pendentes = df[df["status"] == "Pendente"].copy() if not df.empty else pd.DataFrame()
     contas_hoje = contas_pendentes[contas_pendentes["data_vencimento"] == hoje].copy() if not contas_pendentes.empty and "data_vencimento" in contas_pendentes.columns else pd.DataFrame()
@@ -607,12 +631,18 @@ if page == "Resumo do Dia":
             (df['data_fim_recorrencia'].dt.year == ano_atual_num)
         ]
 
-    pagamentos_pendentes = [p for p in pagamentos_resumo if p.get("status") == "Pendente"]
+    pagamentos_pendentes = [p for p in pagamentos_resumo if p.get("status"] == "Pendente"]
     inscricoes_por_id = {str(i.get("id")): i for i in inscricoes_resumo}
     eventos_por_id = {str(e.get("id")): e for e in eventos_resumo}
 
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Saldo Consolidado", fmt_moeda(saldo_consolidado))
+    with col1:
+        st.metric("Saldo Consolidado", fmt_moeda(saldo_consolidado))
+        # Exibe o detalhamento das contas de forma limpa abaixo da métrica principal
+        with st.expander("🔍 Ver contas"):
+            for sc in saldos_por_conta:
+                st.caption(f"• {sc['nome']}: **{fmt_moeda(sc['saldo'])}**")
+                
     col2.metric("A Pagar Hoje", str(len(contas_hoje)))
     col3.metric("Contas Atrasadas", str(len(contas_atrasadas)))
     col4.metric("Recorrências Expirando", str(len(recorrencias_expirando)))
