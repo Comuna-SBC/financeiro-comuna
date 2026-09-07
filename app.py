@@ -475,8 +475,23 @@ contas_bancarias_db = carregar("contas_bancarias")
 if "page" not in st.session_state:
     st.session_state.page = "Resumo do Dia"
 
+# CSS para forçar alinhamento à esquerda e compactar o espaço vertical dos botões
+st.sidebar.markdown("""
+    <style>
+    div[data-testid="stSidebarNav"] {display: none;}
+    .stButton > button {
+        justify-content: flex-start !important;
+        text-align: left !important;
+        padding-top: 0.3rem !important;
+        padding-bottom: 0.3rem !important;
+        min-height: 2rem !important;
+        margin-bottom: -0.2rem !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 def secao(nome):
-    st.sidebar.markdown(f"<p style='color:#94A3B8;font-size:0.72rem;font-weight:700;letter-spacing:0.08em;margin:18px 0 6px 4px;'>{nome}</p>", unsafe_allow_html=True)
+    st.sidebar.markdown(f"<p style='color:#94A3B8;font-size:0.68rem;font-weight:700;letter-spacing:0.08em;margin:10px 0 2px 4px;'>{nome}</p>", unsafe_allow_html=True)
 
 def nav_button(label, icon):
     ativo = st.session_state.page == label
@@ -484,7 +499,7 @@ def nav_button(label, icon):
         st.session_state.page = label
         st.rerun()
 
-st.sidebar.markdown("<h2 style='color:#0F172A;font-weight:800;padding-top:6px;'>⛪ Gestão Financeira </h2>", unsafe_allow_html=True)
+st.sidebar.markdown("<h2 style='color:#0F172A;font-weight:800;padding-top:0px;margin-bottom:0px;'>⛪ Gestão Financeira </h2>", unsafe_allow_html=True)
 
 secao("OPERACIONAL")
 nav_button("Resumo do Dia", "🏠")
@@ -498,22 +513,19 @@ nav_button("Metas e Orçamentos", "🎯")
 
 secao("RELATÓRIOS")
 nav_button("Analytics Financeiro", "📊")
-nav_button("Exportar Contabilidade", "📤")
+nav_button("Exportar Contabilidade", "📥")
 
-# Linha divisória para isolar o módulo de eventos
-st.sidebar.markdown("<br><hr style='margin: 0; border-color: #E2E8F0;'><br>", unsafe_allow_html=True)
+# Linha divisória compacta para isolar o módulo de eventos
+st.sidebar.markdown("<hr style='margin: 8px 0; border-color: #E2E8F0;'>", unsafe_allow_html=True)
 
 secao("GESTÃO DE EVENTOS")
 nav_button("Painel de Eventos", "🎫")
 nav_button("Inscrições e Comprovantes", "✅")
 
-st.sidebar.markdown("---")
+st.sidebar.markdown("<hr style='margin: 8px 0 4px 0; border-color: #E2E8F0;'>", unsafe_allow_html=True)
 st.sidebar.caption("Gestão Financeira • Final")
 
 page = st.session_state.page
-# ==========================================
-# ==========================================
-# ==========================================
 # ==========================================
 # RESUMO DO DIA 
 # ==========================================
