@@ -991,11 +991,10 @@ elif page == "Tesouraria":
                             "recorrente": bool(recorrente)
                         }
                         
-                        # Se for recorrente, adiciona os campos específicos ao payload
+                        # Se for recorrente, envia os campos usando o nome exato da sua coluna existente
                         if recorrente:
                             payload_lanc["dia_vencimento"] = int(dia_vencimento)
-                            payload_lanc["data_fim"] = str(data_fim_rec)
-                            payload_lanc["data_fim_recorrencia"] = str(data_fim_rec) # Fallback para garantir compatibilidade
+                            payload_lanc["data_fim_recorrencia"] = str(data_fim_rec)
 
                         if status_lanc == "Concluído":
                             payload_lanc["data_pagamento"] = str(data_venc)
@@ -1011,7 +1010,6 @@ elif page == "Tesouraria":
                             st.success("✅ Lançamento e anexos registrados com sucesso!")
                             time.sleep(1)
                             st.rerun()
-
     with tab2:
         df = carregar_lancamentos_df()
         pend = df[(df['status'] == 'Pendente') & (df['recorrente'] != True)].copy() if not df.empty else pd.DataFrame()
