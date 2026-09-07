@@ -1611,11 +1611,12 @@ elif page == "Tesouraria":
                                 st.rerun()
                 st.markdown("<hr style='margin:6px 0;border:none;border-top:1px solid #E2E8F0;'>", unsafe_allow_html=True)
 # ==========================================
+# ==========================================
 # CONCILIAÇÃO BANCÁRIA (COM IMPORTAÇÃO INTELIGENTE DE OFX)
 # ==========================================
 elif page == "Conciliação Bancária":
     st.title("Conciliação Bancária")
-    st.markdown("Confira os lançamentos manualmente ou importe o extrato do banco (OFX) para automatizar o cadastro de Dízimos e Ofertas em lote.")
+    st.markdown("Confira os lançamentos manualmente ou importe o extrato do banco (OFX) para automatizar o cadastro em lote.")
 
     col_nova, col_edit = st.columns(2)
     with col_nova:
@@ -1663,7 +1664,6 @@ elif page == "Conciliação Bancária":
         st.info("Cadastre ao menos uma conta bancária acima para iniciar a conciliação.")
     else:
         conta_opcoes = {c["nome"]: c["id"] for c in contas_bancarias_db}
-        # Chave única aplicada para evitar conflito com o selectbox do expander acima
         conta_sel = st.selectbox("Selecione a Conta", list(conta_opcoes.keys()), key="select_conta_principal_conciliacao")
         conta_id = conta_opcoes[conta_sel]
 
@@ -1691,7 +1691,7 @@ elif page == "Conciliação Bancária":
         tab_ofx, tab_manual = st.tabs(["⚡ Importação Inteligente (OFX)", "🖐️ Conciliação Manual"])
 
         with tab_ofx:
-            st.markdown("Faça o upload do arquivo **.OFX** gerado pelo seu banco. O sistema cruzará os dados com os eventos/lançamentos já existentes, filtrando apenas os PIX novos para cadastro rápido.")
+            st.markdown("Faça o upload do arquivo **.OFX** gerado pelo seu banco. O sistema cruzará os dados com os lançamentos existentes, listando **Entradas** e **Saídas** novas para você categorizar e salvar em lote.")
             arquivo_ofx = st.file_uploader("Selecione o arquivo OFX do banco", type=['ofx', 'txt'])
 
             if arquivo_ofx:
@@ -1734,50 +1734,113 @@ elif page == "Conciliação Bancária":
                                 df_ofx.at[idx, 'Status'] = 'Já no sistema'
                                 used_ids.add(match_id)
 
-                    df_entradas_novas = df_ofx[(df_ofx['Status'] == 'Não registrado') & (df_ofx['Tipo'] == 'Entrada')].copy()
+                    df_novos = df_ofx[df_ofx['Status'] == 'Não registrado'].copy()
 
-                    if df_entradas_novas.empty:
-                        st.success("🎉 Todas as entradas deste extrato já constam e batem com o sistema!")
+                    if df_novos.empty:
+                        st.success("🎉 Todas as transações deste extrato já constam e batem com o sistema!")
                     else:
-                        st.info(f"Encontramos **{len(df_entradas_novas)} transferências (PIX/Depósitos)** no extrato que ainda não constam no sistema.")
-                        df_entradas_novas.insert(0, 'Cadastrar', False)
-
-                        st.write("Marque na tabela abaixo quais transferências você deseja converter em lançamentos:")
-                        df_editado = st.data_editor(
-                            df_entradas_novas[['Cadastrar', 'Data', 'Descrição Bancária', 'Valor']],
-                            hide_index=True, use_container_width=True
-                        )
-
-                        col_cat, col_btn = st.columns([2, 1])
-                        opcoes_cats_entrada = {c["nome"]: c["id"] for c in categorias_db if c["tipo"] == "Entrada"}
+                        st.info(f"Encontramos **{len(df_novos)} transações** no extrato que ainda não constam no sistema.")
                         
-                        cat_padrao = "Dízimos e Ofertas" if "Dízimos e Ofertas" in opcoes_cats_entrada else list(opcoes_cats_entrada.keys())[0]
-                        cat_lote = col_cat.selectbox("Classificar os itens marcados como:", list(opcoes_cats_entrada.keys()), index=list(opcoes_cats_entrada.keys()).index(cat_padrao), key="select_cat_lote_ofx")
+                        cats_entrada = [c['nome'] for c in categorias_db if c['tipo'] == 'Entrada']
+                        cats_saida = [c['nome'] for c in categorias_db if c['tipo'] == 'Saída']
+                        nomes_eventos = ["Nenhum"] + [e['nome'] for e in eventos_db]
+                        map_cat_id = {c['nome']: c['id'] for c in categorias_db}
+                        
+                        df_entradas = df_novos[df_novos['Tipo'] == 'Entrada'].copy()
+                        df_saidas = df_novos[df_novos['Tipo'] == 'Saída'].copy()
+                        
+                        df_entradas_final = pd.DataFrame()
+                        df_saidas_final = pd.DataFrame()
 
-                        if col_btn.button("💾 Salvar Marcados no Banco", type="primary", use_container_width=True):
-                            itens_selecionados = df_editado[df_editado['Cadastrar'] == True]
-                            if itens_selecionados.empty:
-                                st.warning("Marque pelo menos um item na tabela clicando na caixa 'Cadastrar'.")
+                        if not df_entradas.empty:
+                            st.markdown("#### 🟢 Novas Entradas (Recebimentos)")
+                            df_entradas.insert(0, 'Cadastrar', False)
+                            df_entradas['Descrição para Sistema'] = "Extrato: " + df_entradas['Descrição Bancária']
+                            df_entradas['Categoria'] = cats_entrada[0] if cats_entrada else ""
+                            df_entradas['Projeto'] = "Nenhum"
+                            
+                            df_entradas_final = st.data_editor(
+                                df_entradas[['Cadastrar', 'Data', 'Descrição Bancária', 'Descrição para Sistema', 'Valor', 'Categoria', 'Projeto']],
+                                column_config={
+                                    "Data": st.column_config.DateColumn(disabled=True, format="DD/MM/YYYY"),
+                                    "Descrição Bancária": st.column_config.TextColumn(disabled=True),
+                                    "Descrição para Sistema": st.column_config.TextColumn(required=True),
+                                    "Valor": st.column_config.NumberColumn(disabled=True, format="R$ %.2f"),
+                                    "Categoria": st.column_config.SelectboxColumn(options=cats_entrada, required=True),
+                                    "Projeto": st.column_config.SelectboxColumn(options=nomes_eventos)
+                                },
+                                hide_index=True, use_container_width=True, key="ed_entradas_ofx"
+                            )
+
+                        if not df_saidas.empty:
+                            st.markdown("#### 🔴 Novas Saídas (Pagamentos)")
+                            df_saidas.insert(0, 'Cadastrar', False)
+                            df_saidas['Descrição para Sistema'] = "Extrato: " + df_saidas['Descrição Bancária']
+                            df_saidas['Categoria'] = cats_saida[0] if cats_saida else ""
+                            df_saidas['Projeto'] = "Nenhum"
+                            
+                            df_saidas_final = st.data_editor(
+                                df_saidas[['Cadastrar', 'Data', 'Descrição Bancária', 'Descrição para Sistema', 'Valor', 'Categoria', 'Projeto']],
+                                column_config={
+                                    "Data": st.column_config.DateColumn(disabled=True, format="DD/MM/YYYY"),
+                                    "Descrição Bancária": st.column_config.TextColumn(disabled=True),
+                                    "Descrição para Sistema": st.column_config.TextColumn(required=True),
+                                    "Valor": st.column_config.NumberColumn(disabled=True, format="R$ %.2f"),
+                                    "Categoria": st.column_config.SelectboxColumn(options=cats_saida, required=True),
+                                    "Projeto": st.column_config.SelectboxColumn(options=nomes_eventos)
+                                },
+                                hide_index=True, use_container_width=True, key="ed_saidas_ofx"
+                            )
+
+                        if st.button("💾 Salvar Marcados no Sistema", type="primary"):
+                            payload_inserir = []
+                            
+                            if not df_entradas_final.empty:
+                                para_salvar_ent = df_entradas_final[df_entradas_final['Cadastrar'] == True]
+                                for _, row in para_salvar_ent.iterrows():
+                                    cc = None if row['Projeto'] == "Nenhum" else row['Projeto']
+                                    payload_inserir.append({
+                                        "descricao": row['Descrição para Sistema'],
+                                        "tipo": "Entrada",
+                                        "valor": float(row['Valor']),
+                                        "data_competencia": str(row['Data']),
+                                        "status": "Concluído",
+                                        "data_pagamento": str(row['Data']),
+                                        "categoria_id": map_cat_id.get(row['Categoria']),
+                                        "conta_bancaria_id": conta_id,
+                                        "centro_custo": cc,
+                                        "conciliado": True
+                                    })
+                                    
+                            if not df_saidas_final.empty:
+                                para_salvar_sai = df_saidas_final[df_saidas_final['Cadastrar'] == True]
+                                for _, row in para_salvar_sai.iterrows():
+                                    cc = None if row['Projeto'] == "Nenhum" else row['Projeto']
+                                    payload_inserir.append({
+                                        "descricao": row['Descrição para Sistema'],
+                                        "tipo": "Saída",
+                                        "valor": float(row['Valor']),
+                                        "data_competencia": str(row['Data']),
+                                        "status": "Concluído",
+                                        "data_pagamento": str(row['Data']),
+                                        "categoria_id": map_cat_id.get(row['Categoria']),
+                                        "conta_bancaria_id": conta_id,
+                                        "centro_custo": cc,
+                                        "conciliado": True
+                                    })
+                                    
+                            if not payload_inserir:
+                                st.warning("Marque pelo menos um item na coluna 'Cadastrar' antes de salvar.")
                             else:
-                                with st.spinner("Registrando lançamentos..."):
-                                    for _, row_sel in itens_selecionados.iterrows():
-                                        sb_request("lancamentos", "POST", {
-                                            "descricao": f"PIX Extrato: {row_sel['Descrição Bancária']}",
-                                            "tipo": "Entrada",
-                                            "valor": float(row_sel['Valor']),
-                                            "data_competencia": str(row_sel['Data']),
-                                            "status": "Concluído",
-                                            "data_pagamento": str(row_sel['Data']),
-                                            "categoria_id": opcoes_cats_entrada[cat_lote],
-                                            "conta_bancaria_id": conta_id,
-                                            "conciliado": True
-                                        })
-                                    st.cache_data.clear()
-                                    st.success(f"{len(itens_selecionados)} Dízimos/Ofertas registrados com sucesso!")
-                                    time.sleep(1.5)
-                                    st.rerun()
+                                with st.spinner(f"Registrando {len(payload_inserir)} lançamentos..."):
+                                    res = sb_request("lancamentos", "POST", payload_inserir)
+                                    if res is not None:
+                                        st.cache_data.clear()
+                                        st.success(f"{len(payload_inserir)} lançamentos registrados com sucesso!")
+                                        time.sleep(1.5)
+                                        st.rerun()
 
-                    with st.expander("Ver itens cruzados automaticamente (PIX de eventos, etc)"):
+                    with st.expander("Ver itens cruzados automaticamente (que já estão no sistema)"):
                         df_ja_registrado = df_ofx[df_ofx['Status'] == 'Já no sistema']
                         if not df_ja_registrado.empty:
                             st.dataframe(df_ja_registrado[['Data', 'Descrição Bancária', 'Valor', 'Tipo']], use_container_width=True, hide_index=True)
@@ -1807,7 +1870,6 @@ elif page == "Conciliação Bancária":
                 if dff_manual.empty:
                     st.success("Nenhum lançamento pendente de conciliação para este filtro! 🎉")
                 else:
-                    # Cabeçalho limpo com colunas bem definidas
                     hc1, hc2, hc3, hc4, hc5, hc6, hc7 = st.columns([1.0, 2.5, 2.0, 1.2, 1.0, 0.8, 1.2])
                     hc1.markdown("**Data**")
                     hc2.markdown("**Descrição**")
@@ -1839,12 +1901,10 @@ elif page == "Conciliação Bancária":
                         else:
                             c5.markdown("—")
                         
-                        # Botão de Detalhes compacto (ícone de lupa)
                         if c6.button("🔍", key=f"detalhe_btn_{row_id}", help="Ver detalhes e anexos"):
                             st.session_state[f"show_detalhe_{row_id}"] = not st.session_state.get(f"show_detalhe_{row_id}", False)
                             st.rerun()
                         
-                        # Checkbox de Conciliado isolado na última coluna
                         marcado = bool(row.get('conciliado'))
                         novo_valor = c7.checkbox(" ", value=marcado, key=f"conc_{row_id}")
                         
@@ -1854,7 +1914,6 @@ elif page == "Conciliação Bancária":
                                 st.cache_data.clear()
                                 st.rerun()
 
-                        # Painel expansível de detalhes integrado com a nova tabela de múltiplos anexos
                         if st.session_state.get(f"show_detalhe_{row_id}", False):
                             with st.container(border=True):
                                 st.markdown(f"**Conferência do Lançamento:** {row['descricao']}")
@@ -1865,7 +1924,6 @@ elif page == "Conciliação Bancária":
                                 st.markdown("---")
                                 st.markdown("**📎 Documentos e Comprovantes Anexados:**")
                                 
-                                # Busca os anexos na tabela complementar nova
                                 anexos_lanc = sb_request("lancamento_anexos", "GET", filtros={"lancamento_id": f"eq.{row_id}"})
                                 
                                 if not anexos_lanc:
