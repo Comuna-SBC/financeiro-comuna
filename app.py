@@ -1624,6 +1624,9 @@ elif page == "Painel de Eventos":
             default_date = date.today()
 
     n_data_ev = st.date_input("Data", default_date)
+    n_valor_ev = st.number_input("Valor (R$)", value=float(ev_data.get('valor_inscricao') or 0), format="%.2f")
+
+    n_data_ev = st.date_input("Data", default_date)
                     n_valor_ev = st.number_input("Valor (R$)", value=float(ev_data.get('valor_inscricao') or 0), format="%.2f")
                     n_vagas_ev = st.number_input("Vagas", value=int(ev_data.get('vagas_total') or 0))
                     n_pix = st.text_input("Pix", value=ev_data.get('chave_pix') or "")
