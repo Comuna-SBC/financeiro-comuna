@@ -1374,7 +1374,7 @@ elif page == "Tesouraria":
                     else:
                         cols[6].markdown("<div class='drill-row' style='color: #64748B;'>Sem anexo</div>", unsafe_allow_html=True)
 
-                    # Coluna do Lápis para disparar a edição
+                    # Coluna do Lápis para disparar a edição completa
                     if cols[7].button("✏️", key=f"btn_edit_lapis_{row_id}", help="Editar Lançamento"):
                         st.session_state[f"edit_lanc_ativo"] = row_id
                         st.rerun()
@@ -1418,28 +1418,81 @@ elif page == "Tesouraria":
                                 st.session_state[f"show_hist_anexo_{row_id}"] = False
                                 st.rerun()
 
-                    # Bloco de edição ativado pelo clique no ícone de lápis
+                    # Bloco de edição COMPLETA ativado pelo clique no ícone de lápis
                     if st.session_state.get(f"edit_lanc_ativo") == row_id:
                         with st.container(border=True):
                             st.markdown(f"#### ✏️ Editando Lançamento: {row.get('descricao', '')}")
                             lanc_raw = next((l for l in carregar("lancamentos") if str(l.get('id')) == row_id), row)
+                            
                             with st.form(f"form_ed_lapis_{row_id}"):
-                                n_desc = st.text_input("Descrição", value=lanc_raw.get('descricao', ''))
-                                n_valor = st.number_input("Valor (R$)", value=float(lanc_raw.get('valor') or 0), format="%.2f")
-                                
+                                col_e1, col_e2 = st.columns(2)
+                                with col_e1:
+                                    n_tipo = st.selectbox("Tipo", ["Entrada", "Saída"], index=0 if lanc_raw.get('tipo', 'Entrada') == "Entrada" else 1, key=f"ed_tipo_{row_id}")
+                                    n_desc = st.text_input("Descrição", value=lanc_raw.get('descricao', ''), key=f"ed_desc_{row_id}")
+                                    n_valor = st.number_input("Valor (R$)", value=float(lanc_raw.get('valor') or 0), format="%.2f", key=f"ed_val_{row_id}")
+                                with col_e2:
+                                    raw_data = lanc_raw.get('data_competencia')
+                                    try:
+                                        default_date = pd.to_datetime(raw_data).date() if raw_data else date.today()
+                                    except:
+                                        default_date = date.today()
+                                    n_data = st.date_input("Data", value=default_date, format="DD/MM/YYYY", key=f"ed_data_{row_id}")
+                                    
+                                    status_opts = ["Concluído", "Pendente"]
+                                    curr_status = lanc_raw.get('status', 'Concluído')
+                                    status_idx = status_opts.index(curr_status) if curr_status in status_opts else 0
+                                    n_status = st.selectbox("Situação", status_opts, index=status_idx, key=f"ed_status_{row_id}")
+
+                                col_e3, col_e4 = st.columns(2)
+                                with col_e3:
+                                    cat_nomes = [c.get('nome') for c in categorias_db] if 'categorias_db' in globals() and categorias_db else []
+                                    curr_cat = lanc_raw.get('categoria_nome', '')
+                                    cat_idx = cat_nomes.index(curr_cat) if curr_cat in cat_nomes else 0
+                                    n_cat_nome = st.selectbox("Categoria", cat_nomes if cat_nomes else [curr_cat], index=cat_idx if cat_nomes else 0, key=f"ed_cat_{row_id}")
+                                    
+                                    selected_cat_obj = next((c for c in categorias_db if c.get('nome') == n_cat_nome), None) if 'categorias_db' in globals() and categorias_db else None
+                                    n_cat_id = selected_cat_obj.get('id') if selected_cat_obj else lanc_raw.get('categoria_id')
+
+                                with col_e4:
+                                    conta_nomes = [cb.get('nome') for cb in contas_bancarias_db] if 'contas_bancarias_db' in globals() and contas_bancarias_db else []
+                                    curr_conta = lanc_raw.get('conta_nome', '')
+                                    conta_idx = conta_nomes.index(curr_conta) if curr_conta in conta_nomes else 0
+                                    n_conta_nome = st.selectbox("Conta Bancária", conta_nomes if conta_nomes else [curr_conta], index=conta_idx if conta_nomes else 0, key=f"ed_conta_{row_id}")
+                                    
+                                    selected_conta_obj = next((cb for cb in contas_bancarias_db if cb.get('nome') == n_conta_nome), None) if 'contas_bancarias_db' in globals() and contas_bancarias_db else None
+                                    n_conta_id = selected_conta_obj.get('id') if selected_conta_obj else lanc_raw.get('conta_bancaria_id')
+
+                                st.markdown("")
                                 c_b1, c_b2, c_b3 = st.columns(3)
-                                btn_upd = c_b1.form_submit_button("💾 Salvar", use_container_width=True)
+                                btn_upd = c_b1.form_submit_button("💾 Salvar Alterações", use_container_width=True)
                                 btn_del = c_b2.form_submit_button("🗑️ Excluir", use_container_width=True)
                                 btn_canc = c_b3.form_submit_button("❌ Fechar", use_container_width=True)
                                 
                                 if btn_upd:
-                                    sb_request("lancamentos", "PATCH", {"descricao": n_desc, "valor": float(n_valor)}, filtros={"id": f"eq.{row_id}"})
+                                    payload = {
+                                        "tipo": n_tipo,
+                                        "descricao": n_desc,
+                                        "valor": float(n_valor),
+                                        "data_competencia": str(n_data),
+                                        "status": n_status,
+                                        "categoria_id": n_cat_id,
+                                        "categoria_nome": n_cat_nome,
+                                        "conta_bancaria_id": n_conta_id,
+                                        "conta_nome": n_conta_nome
+                                    }
+                                    sb_request("lancamentos", "PATCH", payload, filtros={"id": f"eq.{row_id}"})
                                     st.session_state[f"edit_lanc_ativo"] = None
-                                    st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1); st.rerun()
+                                    st.cache_data.clear()
+                                    st.success("Lançamento atualizado com sucesso!")
+                                    time.sleep(1)
+                                    st.rerun()
                                 if btn_del:
                                     sb_request("lancamentos", "DELETE", filtros={"id": f"eq.{row_id}"})
                                     st.session_state[f"edit_lanc_ativo"] = None
-                                    st.cache_data.clear(); st.success("Excluído!"); time.sleep(1); st.rerun()
+                                    st.cache_data.clear()
+                                    st.success("Lançamento excluído com sucesso!")
+                                    time.sleep(1)
+                                    st.rerun()
                                 if btn_canc:
                                     st.session_state[f"edit_lanc_ativo"] = None
                                     st.rerun()
@@ -1459,7 +1512,6 @@ elif page == "Tesouraria":
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="btn_dl_lanc_filtro"
                 )
-
     with tab4:
         st.markdown("### Gerenciamento de Regras Recorrentes (Despesas/Receitas Fixas)")
         df_all = carregar_lancamentos_df()
