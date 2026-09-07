@@ -1023,7 +1023,7 @@ elif page == "Tesouraria":
             if pend_pagar.empty:
                 st.success("Nenhuma conta a pagar pendente. 👍")
             else:
-                for _, row in pend_pagar.iterrows():
+                for idx, (_, row) in enumerate(pend_pagar.iterrows()):
                     venc = row['data_vencimento']
                     situacao = "🔴 Atrasado" if pd.notna(venc) and venc < hoje else ("🟡 Vence hoje" if venc == hoje else "🟢 A vencer")
                     c1, c2, c3, c4, c5 = st.columns([3, 1.4, 1.4, 1.4, 1.2])
@@ -1033,22 +1033,23 @@ elif page == "Tesouraria":
                     c4.write(situacao)
                     
                     row_id = str(row['id'])
-                    is_paying = st.session_state.get(f"paying_{row_id}", False)
+                    session_key_pay = f"paying_{row_id}_{idx}"
+                    is_paying = st.session_state.get(session_key_pay, False)
                     
                     if not is_paying:
-                        if c5.button("✅ Pagar", key=f"pagar_tab_{row_id}"):
-                            st.session_state[f"paying_{row_id}"] = True
+                        if c5.button("✅ Pagar", key=f"pagar_tab_{row_id}_{idx}"):
+                            st.session_state[session_key_pay] = True
                             st.rerun()
                     else:
                         c5.write("Aguardando...")
 
-                    if st.session_state.get(f"paying_{row_id}", False):
+                    if st.session_state.get(session_key_pay, False):
                         with st.container(border=True):
                             st.markdown(f"📎 **Anexo Obrigatório (Nota Fiscal/Comprovante) para:** {row['descricao']}")
-                            arq_pagar_multiplos = st.file_uploader("Selecione os arquivos (Permite múltiplos)", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True, key=f"file_pagar_{row_id}")
+                            arq_pagar_multiplos = st.file_uploader("Selecione os arquivos (Permite múltiplos)", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True, key=f"file_pagar_{row_id}_{idx}")
                             
                             col_b1, col_b2 = st.columns(2)
-                            if col_b1.button("💾 Confirmar Pagamento", key=f"conf_pagar_{row_id}", type="primary"):
+                            if col_b1.button("💾 Confirmar Pagamento", key=f"conf_pagar_{row_id}_{idx}", type="primary"):
                                 if not arq_pagar_multiplos:
                                     st.error("⚠️ O anexo da nota fiscal/comprovante é **mandatório** para contas a pagar.")
                                 else:
@@ -1061,13 +1062,13 @@ elif page == "Tesouraria":
                                         if res is not None:
                                             processar_e_salvar_anexos(arq_pagar_multiplos, row_id, row['data_competencia'], row['categoria_nome'], row['descricao'])
                                             
-                                            st.session_state[f"paying_{row_id}"] = False
+                                            st.session_state[session_key_pay] = False
                                             st.cache_data.clear()
                                             st.success("Pagamento registrado com sucesso!")
                                             time.sleep(1)
                                             st.rerun()
-                            if col_b2.button("❌ Cancelar", key=f"canc_pagar_{row_id}"):
-                                st.session_state[f"paying_{row_id}"] = False
+                            if col_b2.button("❌ Cancelar", key=f"canc_pagar_{row_id}_{idx}"):
+                                st.session_state[session_key_pay] = False
                                 st.rerun()
 
             st.markdown("---")
@@ -1077,7 +1078,7 @@ elif page == "Tesouraria":
             if pend_receber.empty:
                 st.success("Nenhuma conta a receber pendente. 👍")
             else:
-                for _, row in pend_receber.iterrows():
+                for idx, (_, row) in enumerate(pend_receber.iterrows()):
                     venc = row['data_vencimento']
                     situacao = "🔴 Atrasado" if pd.notna(venc) and venc < hoje else ("🟡 Vence hoje" if venc == hoje else "🟢 A vencer")
                     c1, c2, c3, c4, c5 = st.columns([3, 1.4, 1.4, 1.4, 1.2])
@@ -1087,22 +1088,23 @@ elif page == "Tesouraria":
                     c4.write(situacao)
                     
                     row_id = str(row['id'])
-                    is_receiving = st.session_state.get(f"receiving_{row_id}", False)
+                    session_key_rec = f"receiving_{row_id}_{idx}"
+                    is_receiving = st.session_state.get(session_key_rec, False)
                     
                     if not is_receiving:
-                        if c5.button("✅ Receber", key=f"receber_tab_{row_id}"):
-                            st.session_state[f"receiving_{row_id}"] = True
+                        if c5.button("✅ Receber", key=f"receber_tab_{row_id}_{idx}"):
+                            st.session_state[session_key_rec] = True
                             st.rerun()
                     else:
                         c5.write("Aguardando...")
 
-                    if st.session_state.get(f"receiving_{row_id}", False):
+                    if st.session_state.get(session_key_rec, False):
                         with st.container(border=True):
                             st.markdown(f"📎 **Anexo Opcional para:** {row['descricao']}")
-                            arq_receber_multiplos = st.file_uploader("Selecione os arquivos se desejar anexar (Opcional)", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True, key=f"file_receber_{row_id}")
+                            arq_receber_multiplos = st.file_uploader("Selecione os arquivos se desejar anexar (Opcional)", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True, key=f"file_receber_{row_id}_{idx}")
                             
                             col_b1, col_b2 = st.columns(2)
-                            if col_b1.button("💾 Confirmar Recebimento", key=f"conf_receber_{row_id}", type="primary"):
+                            if col_b1.button("💾 Confirmar Recebimento", key=f"conf_receber_{row_id}_{idx}", type="primary"):
                                 with st.spinner("Registrando recebimento..."):
                                     res = sb_request("lancamentos", "PATCH", {
                                         "status": "Concluído", 
@@ -1113,130 +1115,13 @@ elif page == "Tesouraria":
                                         if arq_receber_multiplos:
                                             processar_e_salvar_anexos(arq_receber_multiplos, row_id, row['data_competencia'], row['categoria_nome'], row['descricao'])
                                             
-                                        st.session_state[f"receiving_{row_id}"] = False
+                                        st.session_state[session_key_rec] = False
                                         st.cache_data.clear()
                                         st.success("Recebimento registrado com sucesso!")
                                         time.sleep(1)
                                         st.rerun()
-                            if col_b2.button("❌ Cancelar", key=f"canc_receber_{row_id}"):
-                                st.session_state[f"receiving_{row_id}"] = False
-                                st.rerun()
-
-    with tab2:
-        df = carregar_lancamentos_df()
-        pend = df[(df['status'] == 'Pendente') & (df['recorrente'] != True)].copy() if not df.empty else pd.DataFrame()
-        
-        if pend.empty:
-            st.info("Nenhuma conta pendente no momento. 🎉")
-        else:
-            hoje = pd.Timestamp(date.today())
-            
-            pend_pagar = pend[pend['tipo'] == 'Saída'].sort_values('data_vencimento') if 'tipo' in pend.columns else pd.DataFrame()
-            pend_receber = pend[pend['tipo'] == 'Entrada'].sort_values('data_vencimento') if 'tipo' in pend.columns else pd.DataFrame()
-
-            # Bloco Superior: Contas a Pagar
-            st.subheader("💳 Contas a Pagar")
-            if pend_pagar.empty:
-                st.success("Nenhuma conta a pagar pendente. 👍")
-            else:
-                for _, row in pend_pagar.iterrows():
-                    venc = row['data_vencimento']
-                    situacao = "🔴 Atrasado" if pd.notna(venc) and venc < hoje else ("🟡 Vence hoje" if venc == hoje else "🟢 A vencer")
-                    c1, c2, c3, c4, c5 = st.columns([3, 1.4, 1.4, 1.4, 1.2])
-                    c1.write(f"**{row['descricao']}** — {row['categoria_nome']}")
-                    c2.write(fmt_moeda(row['valor']))
-                    c3.write(venc.strftime('%d.%m.%Y') if pd.notna(venc) else '—')
-                    c4.write(situacao)
-                    
-                    row_id = str(row['id'])
-                    is_paying = st.session_state.get(f"paying_{row_id}", False)
-                    
-                    if not is_paying:
-                        if c5.button("✅ Pagar", key=f"pagar_tab_{row_id}"):
-                            st.session_state[f"paying_{row_id}"] = True
-                            st.rerun()
-                    else:
-                        c5.write("Aguardando...")
-
-                    if st.session_state.get(f"paying_{row_id}", False):
-                        with st.container(border=True):
-                            st.markdown(f"📎 **Anexo Obrigatório (Nota Fiscal/Comprovante) para:** {row['descricao']}")
-                            arq_pagar_multiplos = st.file_uploader("Selecione os arquivos (Permite múltiplos)", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True, key=f"file_pagar_{row_id}")
-                            
-                            col_b1, col_b2 = st.columns(2)
-                            if col_b1.button("💾 Confirmar Pagamento", key=f"conf_pagar_{row_id}", type="primary"):
-                                if not arq_pagar_multiplos:
-                                    st.error("⚠️ O anexo da nota fiscal/comprovante é **mandatório** para contas a pagar.")
-                                else:
-                                    with st.spinner("Enviando anexos e registrando pagamento..."):
-                                        res = sb_request("lancamentos", "PATCH", {
-                                            "status": "Concluído", 
-                                            "data_pagamento": str(date.today())
-                                        }, filtros={"id": f"eq.{row_id}"})
-                                        
-                                        if res is not None:
-                                            # Processa e salva os múltiplos anexos padronizados
-                                            processar_e_salvar_anexos(arq_pagar_multiplos, row_id, row['data_competencia'], row['categoria_nome'], row['descricao'])
-                                            
-                                            st.session_state[f"paying_{row_id}"] = False
-                                            st.cache_data.clear()
-                                            st.success("Pagamento registrado com sucesso!")
-                                            time.sleep(1)
-                                            st.rerun()
-                            if col_b2.button("❌ Cancelar", key=f"canc_pagar_{row_id}"):
-                                st.session_state[f"paying_{row_id}"] = False
-                                st.rerun()
-
-            st.markdown("---")
-
-            # Bloco Inferior: Contas a Receber
-            st.subheader("💰 Contas a Receber")
-            if pend_receber.empty:
-                st.success("Nenhuma conta a receber pendente. 👍")
-            else:
-                for _, row in pend_receber.iterrows():
-                    venc = row['data_vencimento']
-                    situacao = "🔴 Atrasado" if pd.notna(venc) and venc < hoje else ("🟡 Vence hoje" if venc == hoje else "🟢 A vencer")
-                    c1, c2, c3, c4, c5 = st.columns([3, 1.4, 1.4, 1.4, 1.2])
-                    c1.write(f"**{row['descricao']}** — {row['categoria_nome']}")
-                    c2.write(fmt_moeda(row['valor']))
-                    c3.write(venc.strftime('%d.%m.%Y') if pd.notna(venc) else '—')
-                    c4.write(situacao)
-                    
-                    row_id = str(row['id'])
-                    is_receiving = st.session_state.get(f"receiving_{row_id}", False)
-                    
-                    if not is_receiving:
-                        if c5.button("✅ Receber", key=f"receber_tab_{row_id}"):
-                            st.session_state[f"receiving_{row_id}"] = True
-                            st.rerun()
-                    else:
-                        c5.write("Aguardando...")
-
-                    if st.session_state.get(f"receiving_{row_id}", False):
-                        with st.container(border=True):
-                            st.markdown(f"📎 **Anexo Opcional para:** {row['descricao']}")
-                            arq_receber_multiplos = st.file_uploader("Selecione os arquivos se desejar anexar (Opcional)", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True, key=f"file_receber_{row_id}")
-                            
-                            col_b1, col_b2 = st.columns(2)
-                            if col_b1.button("💾 Confirmar Recebimento", key=f"conf_receber_{row_id}", type="primary"):
-                                with st.spinner("Registrando recebimento..."):
-                                    res = sb_request("lancamentos", "PATCH", {
-                                        "status": "Concluído", 
-                                        "data_pagamento": str(date.today())
-                                    }, filtros={"id": f"eq.{row_id}"})
-                                    
-                                    if res is not None:
-                                        if arq_receber_multiplos:
-                                            processar_e_salvar_anexos(arq_receber_multiplos, row_id, row['data_competencia'], row['categoria_nome'], row['descricao'])
-                                            
-                                        st.session_state[f"receiving_{row_id}"] = False
-                                        st.cache_data.clear()
-                                        st.success("Recebimento registrado com sucesso!")
-                                        time.sleep(1)
-                                        st.rerun()
-                            if col_b2.button("❌ Cancelar", key=f"canc_receber_{row_id}"):
-                                st.session_state[f"receiving_{row_id}"] = False
+                            if col_b2.button("❌ Cancelar", key=f"canc_receber_{row_id}_{idx}"):
+                                st.session_state[session_key_rec] = False
                                 st.rerun()
 
     with tab3:
