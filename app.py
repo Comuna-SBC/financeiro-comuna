@@ -760,6 +760,17 @@ elif page == "Visão Consolidada":
     pivot_sai = pd.DataFrame()
     resumo_geral = pd.DataFrame(index=MESES_PT)
 
+    meses_curtos = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+
+    def fmt_inteiro_moeda(val):
+        if pd.isna(val):
+            return "R$ 0"
+        try:
+            v = float(val)
+            return f"R$ {int(round(v)):,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except:
+            return str(val)
+
     with tab_ex1:
         cats_entrada = [c['nome'] for c in categorias_db if c['tipo'] == 'Entrada']
         
@@ -777,10 +788,17 @@ elif page == "Visão Consolidada":
                 pivot_ent.loc[cat] = 0.0
 
         pivot_ent = pivot_ent[[m for m in range(1, 13)]]
-        pivot_ent.columns = MESES_PT
+        pivot_ent.columns = meses_curtos
         pivot_ent['TOTAL ANUAL'] = pivot_ent.sum(axis=1)
         
-        st.dataframe(safe_map_moeda(pivot_ent), use_container_width=True)
+        # Linha de totais por coluna
+        pivot_ent.loc['TOTAL'] = pivot_ent.sum(numeric_only=True)
+
+        pivot_ent_fmt = pivot_ent.copy()
+        for col in pivot_ent_fmt.columns:
+            pivot_ent_fmt[col] = pivot_ent_fmt[col].apply(fmt_inteiro_moeda)
+        
+        st.dataframe(pivot_ent_fmt, use_container_width=True)
 
     with tab_ex2:
         cats_saida = [c['nome'] for c in categorias_db if c['tipo'] == 'Saída']
@@ -799,10 +817,17 @@ elif page == "Visão Consolidada":
                 pivot_sai.loc[cat] = 0.0
 
         pivot_sai = pivot_sai[[m for m in range(1, 13)]]
-        pivot_sai.columns = MESES_PT
+        pivot_sai.columns = meses_curtos
         pivot_sai['TOTAL ANUAL'] = pivot_sai.sum(axis=1)
 
-        st.dataframe(safe_map_moeda(pivot_sai), use_container_width=True)
+        # Linha de totais por coluna
+        pivot_sai.loc['TOTAL'] = pivot_sai.sum(numeric_only=True)
+
+        pivot_sai_fmt = pivot_sai.copy()
+        for col in pivot_sai_fmt.columns:
+            pivot_sai_fmt[col] = pivot_sai_fmt[col].apply(fmt_inteiro_moeda)
+
+        st.dataframe(pivot_sai_fmt, use_container_width=True)
 
     with tab_ex3:
         tot_ent = []
