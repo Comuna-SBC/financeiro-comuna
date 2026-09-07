@@ -1347,41 +1347,81 @@ elif page == "Conciliação Bancária":
                 st.info("Nenhum lançamento concluído nesta conta ainda.")
             else:
                 # Filtros de Otimização para evitar poluição visual
-                col_f1, col_f2, col_f3 = st.columns(3)
+                col_f1, col_f2 = st.columns(2)
                 
-                # Filtro por Mês/Ano com base nos dados disponíveis
                 meses_disponiveis = sorted(df_conta['data_competencia'].dt.strftime('%Y-%m').unique().tolist(), reverse=True)
-                mes_padrao = meses_disponiveis[0] if meses_disponiveis else None
-                
                 filtro_mes = col_f1.selectbox("Filtrar por Mês", ["Todos"] + meses_disponiveis, key="concil_filtro_mes")
                 apenas_nao_conciliados = col_f2.checkbox("Mostrar apenas não conciliados", value=True, key="concil_so_pendentes")
                 
-                # Aplicação dos filtros no DataFrame da conta
                 dff_manual = df_conta.copy()
                 if filtro_mes != "Todos":
-                    dff_manual = dff_manual[dff_manual['data_competencia'].dt.strftime('%Y-%m') == filtro_mes]
+                    dff_manual = dff_manual[dff_manual['data_competencia'].dt.strftime('%Y-%m'] == filtro_mes]
                 if apenas_nao_conciliados:
                     dff_manual = dff_manual[dff_manual['conciliado'] != True]
 
-                st.caption(exibindo := f"Exibindo {len(dff_manual)} lançamento(s) para os filtros selecionados.")
+                st.caption(f"Exibindo {len(dff_manual)} lançamento(s) para os filtros selecionados.")
                 
                 if dff_manual.empty:
                     st.success("Nenhum lançamento pendente de conciliação para este filtro! 🎉")
                 else:
+                    # Cabeçalho customizado da tabela
+                    hc1, hc2, hc3, hc4, hc5, hc6 = st.columns([1.1, 2.3, 2, 1.2, 1.1, 1.5])
+                    hc1.markdown("**Data**")
+                    hc2.markdown("**Descrição**")
+                    hc3.markdown("**Categoria**")
+                    hc4.markdown("**Valor**")
+                    hc5.markdown("**Anexo**")
+                    hc6.markdown("**Ações**")
+                    st.markdown("<hr style='margin:4px 0;border-color:#CBD5E1;'>", unsafe_allow_html=True)
+
                     for _, row in dff_manual.sort_values('data_competencia', ascending=False).iterrows():
-                        c1, c2, c3, c4 = st.columns([3, 1.5, 1.5, 1])
-                        c1.write(row['descricao'])
-                        c2.write(row['data_competencia'].strftime('%d/%m/%Y'))
-                        c3.write(fmt_moeda(row['valor']) if row['tipo'] == 'Entrada' else f"-{fmt_moeda(row['valor'])}")
+                        row_id = str(row['id'])
+                        c1, c2, c3, c4, c5, c6 = st.columns([1.1, 2.3, 2, 1.2, 1.1, 1.5])
                         
+                        c1.write(row['data_competencia'].strftime('%d/%m/%Y'))
+                        c2.write(row['descricao'] or '—')
+                        c3.write(row['categoria_nome'])
+                        
+                        val_str = fmt_moeda(row['valor']) if row['tipo'] == 'Entrada' else f"-{fmt_moeda(row['valor'])}"
+                        c4.write(val_str)
+                        
+                        # Coluna de Anexo (Link direto se houver)
+                        path_anexo = row.get('url_anexo')
+                        if path_anexo and isinstance(path_anexo, str) and path_anexo.strip():
+                            link_url = obter_link_arquivo(path_anexo)
+                            if link_url:
+                                c5.markdown(f"[📎 Baixar]({link_url})", unsafe_allow_html=True)
+                            else:
+                                c5.markdown("Indisp.")
+                        else:
+                            c5.markdown("—")
+                        
+                        # Coluna de Ações: Checkbox de Conciliado + Botão Detalhes
                         marcado = bool(row.get('conciliado'))
-                        novo_valor = c4.checkbox("Conciliado", value=marcado, key=f"conc_{row['id']}")
+                        novo_valor = c6.checkbox("Conciliado", value=marcado, key=f"conc_{row_id}")
                         
                         if novo_valor != marcado:
-                            res = sb_request("lancamentos", "PATCH", {"conciliado": novo_valor}, filtros={"id": f"eq.{row['id']}"})
+                            res = sb_request("lancamentos", "PATCH", {"conciliado": novo_valor}, filtros={"id": f"eq.{row_id}"})
                             if res is not None:
                                 st.cache_data.clear()
                                 st.rerun()
+
+                        if c6.button("🔍 Detalhes", key=f"detalhe_btn_{row_id}", use_container_width=True):
+                            st.session_state[f"show_detalhe_{row_id}"] = not st.session_state.get(f"show_detalhe_{row_id}", False)
+                            st.rerun()
+
+                        # Bloco expansível de detalhes do lançamento na mesma linha
+                        if st.session_state.get(f"show_detalhe_{row_id}", False):
+                            with st.container(border=True):
+                                st.markdown(f"**Conferência do Lançamento:** {row['descricao']}")
+                                st.write(f"• **Tipo:** {row['tipo']} | **Conta Bancária:** {row.get('conta_nome', '—')}")
+                                st.write(f"• **Centro de Custo / Projeto:** {row.get('centro_custo', 'Nenhum')}")
+                                st.write(f"• **Situação:** {row.get('status', '—')}")
+                                if st.button("Fechar Detalhes", key=f"close_det_{row_id}"):
+                                    st.session_state[f"show_detalhe_{row_id}"] = False
+                                    st.rerun()
+
+                        st.markdown("<hr style='margin:2px 0;border-color:#F1F5F9;'>", unsafe_allow_html=True)
 # ==========================================
 # ==========================================
 # PAINEL DE EVENTOS
