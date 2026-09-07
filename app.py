@@ -748,6 +748,10 @@ elif page == "Visão Consolidada":
         anos_disp.append(ano_atual)
         anos_disp = sorted(anos_disp, reverse=True)
 
+    # Layout Superior: Ano de Referência à esquerda e Botão Exportar Excel à direita
+    col_a1, col_a2 = st.columns([3, 1])
+    ano_sel = col_a1.selectbox("Ano de Referência", anos_disp)
+
     df_ano = df[df['data_competencia'].dt.year == ano_sel].copy() if not df.empty else pd.DataFrame()
 
     meses_curtos = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
@@ -825,10 +829,6 @@ elif page == "Visão Consolidada":
         saldo_acum += res
         saldos_mes.append(saldo_acum)
     resumo_geral['Saldo em Caixa Acumulado'] = saldos_mes
-
-    # Layout Superior: Ano de Referência à esquerda e Botão Exportar Excel à direita
-    col_a1, col_a2 = st.columns([3, 1])
-    ano_sel = col_a1.selectbox("Ano de Referência", anos_disp)
 
     with col_a2:
         st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
@@ -1027,7 +1027,6 @@ elif page == "Visão Consolidada":
                 data=excel_detalhe,
                 file_name=f"Detalhes_{ano_sel}_{mes_drill}_{cat_drill}.xlsx".replace(" ", "_"),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
 
 
 # ==========================================
