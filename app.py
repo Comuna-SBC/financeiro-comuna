@@ -8,6 +8,7 @@ import time
 import plotly.express as px
 import plotly.graph_objects as go
 import requests
+import re
 
 # ==========================================
 # CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM
@@ -129,6 +130,60 @@ def to_excel_bytes(dfs_dict):
 @st.cache_data(ttl=15)
 def carregar(tabela):
     return sb_request(tabela, "GET") or []
+
+
+
+def limpar_nome_arquivo(texto):
+    """Remove caracteres especiais e substitui espaços por underscores para padronizar o nome do arquivo."""
+    if not texto:
+        return "geral"
+    # Remove acentos e caracteres não alfanuméricos comuns
+    texto_limpo = re.sub(r'[^a-zA-Z0-9]', '_', texto)
+    return re.sub(r'_+', '_', texto_limpo).strip('_')
+
+def processar_e_salvar_anexos(arquivos_upload, lancamento_id, data_lanc, categoria_nome, descricao):
+    """Processa múltiplos arquivos, renomeia com o padrão YYYYMMDD.categoria.descricao.## e salva no Storage e na tabela."""
+    if not arquivos_upload:
+        return
+    
+    data_str = pd.to_datetime(data_lanc).strftime('%Y%m%d')
+    cat_limpa = limpar_nome_arquivo(categoria_nome)
+    desc_limpa = limpar_nome_arquivo(descricao)
+    
+    for idx, arquivo in enumerate(arquivos_upload, start=1):
+        extensao = arquivo.name.split('.')[-1].lower()
+        nome_padronizado = f"notas/{data_str}.{cat_limpa}.{desc_limpa}.{idx:02d}.{extensao}"
+        bytes_data = arquivo.getvalue()
+        
+        try:
+            # Otimização se for imagem
+            if extensao in ['jpg', 'jpeg', 'png']:
+                img = Image.open(io.BytesIO(bytes_data))
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                img.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
+                output = io.BytesIO()
+                img.save(output, format="JPEG", quality=75, optimize=True)
+                bytes_data = output.getvalue()
+                nome_padronizado = nome_padronizado.rsplit('.', 1)[0] + ".jpg"
+                content_type = "image/jpeg"
+            else:
+                content_type = "application/pdf"
+            
+            # Upload para o Storage do Supabase
+            supabase.storage.from_("comprovantes").upload(
+                nome_padronizado, bytes_data, 
+                file_options={"content-type": content_type, "upsert": "true"}
+            )
+            
+            # Registra na tabela complementar de anexos
+            sb_request("lancamento_anexos", "POST", {
+                "lancamento_id": lancamento_id,
+                "url_storage": nome_padronizado,
+                "nome_original": arquivo.name
+            })
+        except Exception as e:
+            st.error(f"Erro ao salvar o anexo {arquivo.name}: {e}")
 
 @st.cache_data(ttl=15)
 def carregar_categorias():
@@ -261,6 +316,8 @@ def upsert_orcamento(ano, categoria_id, valor):
     else:
         sb_request("orcamentos_categoria", "POST", payload)
     st.cache_data.clear()
+
+
 
 # ==========================================
 # PÁGINA PÚBLICA DE INSCRIÇÃO
@@ -849,49 +906,43 @@ elif page == "Tesouraria":
 
             arquivo = st.file_uploader("Comprovante / Nota Fiscal (Opcional)", type=['png', 'jpg', 'jpeg', 'pdf'], key="lanc_arq_up")
 
+            # Substitua o uploader antigo por este:
+            arquivos = st.file_uploader("Comprovantes / Notas Fiscais (Permite múltiplos arquivos)", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True, key="lanc_arq_up_multiplo")
+
             if st.form_submit_button("💾 Salvar Lançamento", use_container_width=True, type="primary"):
                 if valor <= 0 or not descricao or not opcoes_cats:
                     st.warning("⚠️ Preencha descrição, valor e categoria corretamente.")
                 else:
-                    with st.spinner("Salvando..."):
-                        url_anexo = comprimir_e_fazer_upload(arquivo, pasta="notas") if arquivo else None
+                    with st.spinner("Salvando lançamento e anexos..."):
+                        # Define payload e insere o lançamento principal
+                        payload_lanc = {
+                            "descricao": descricao,
+                            "tipo": tipo_lanc,
+                            "valor": float(valor),
+                            "data_competencia": str(data_comp),
+                            "data_vencimento": str(data_venc),
+                            "status": status_lanc,
+                            "categoria_id": opcoes_cats[categoria_sel],
+                            "conta_bancaria_id": contas_opcoes.get(conta_sel),
+                            "centro_custo": None if tag == "Nenhum" else tag,
+                            "recorrente": False
+                        }
                         
-                        if recorrente:
-                            sb_request("lancamentos", "POST", {
-                                "descricao": descricao,
-                                "tipo": tipo_lanc,
-                                "valor": float(valor),
-                                "data_competencia": str(date.today()),
-                                "data_vencimento": str(date.today()),
-                                "status": "Pendente",
-                                "categoria_id": opcoes_cats[categoria_sel],
-                                "conta_bancaria_id": contas_opcoes.get(conta_sel),
-                                "centro_custo": None if tag == "Nenhum" else tag,
-                                "recorrente": True,
-                                "dia_vencimento_fixo": int(dia_vencimento),
-                                "data_fim_recorrencia": str(data_fim_rec),
-                                "url_anexo": url_anexo
-                            })
-                        else:
-                            sb_request("lancamentos", "POST", {
-                                "descricao": descricao,
-                                "tipo": tipo_lanc,
-                                "valor": float(valor),
-                                "data_competencia": str(data_comp),
-                                "data_vencimento": str(data_venc),
-                                "data_pagamento": str(data_venc) if status_lanc == "Concluído" else None,
-                                "status": status_lanc,
-                                "categoria_id": opcoes_cats[categoria_sel],
-                                "conta_bancaria_id": contas_opcoes.get(conta_sel),
-                                "centro_custo": None if tag == "Nenhum" else tag,
-                                "recorrente": False,
-                                "url_anexo": url_anexo
-                            })
+                        if status_lanc == "Concluído":
+                            payload_lanc["data_pagamento"] = str(data_venc)
 
-                        st.cache_data.clear()
-                        st.success("✅ Lançamento registrado com sucesso!")
-                        time.sleep(1)
-                        st.rerun()
+                        res_lanc = sb_request("lancamentos", "POST", [payload_lanc])
+                        
+                        if res_lanc and len(res_lanc) > 0:
+                            novo_id = res_lanc[0]['id']
+                            # Processa e salva os múltiplos anexos padronizados
+                            if arquivos:
+                                processar_e_salvar_anexos(arquivos, novo_id, data_comp, categoria_sel, descricao)
+                            
+                            st.cache_data.clear()
+                            st.success("✅ Lançamento e anexos registrados com sucesso!")
+                            time.sleep(1)
+                            st.rerun()
 
     with tab2:
         df = carregar_lancamentos_df()
@@ -1396,7 +1447,7 @@ elif page == "Conciliação Bancária":
                             c5.markdown("—")
                         
                         # Botão de Detalhes compacto (ícone de lupa)
-                        if c6.button("🔍", key=f"detalhe_btn_{row_id}", help="Ver detalhes"):
+                        if c6.button("🔍", key=f"detalhe_btn_{row_id}", help="Ver detalhes e anexos"):
                             st.session_state[f"show_detalhe_{row_id}"] = not st.session_state.get(f"show_detalhe_{row_id}", False)
                             st.rerun()
                         
@@ -1410,13 +1461,44 @@ elif page == "Conciliação Bancária":
                                 st.cache_data.clear()
                                 st.rerun()
 
-                        # Container expansível de detalhes logo abaixo da linha, se acionado
+                        # Painel expansível de detalhes integrado com a nova tabela de múltiplos anexos
                         if st.session_state.get(f"show_detalhe_{row_id}", False):
                             with st.container(border=True):
                                 st.markdown(f"**Conferência do Lançamento:** {row['descricao']}")
                                 st.write(f"• **Tipo:** {row['tipo']} | **Conta Bancária:** {row.get('conta_nome', '—')}")
                                 st.write(f"• **Centro de Custo / Projeto:** {row.get('centro_custo', 'Nenhum')}")
                                 st.write(f"• **Situação:** {row.get('status', '—')}")
+                                
+                                st.markdown("---")
+                                st.markdown("**📎 Documentos e Comprovantes Anexados:**")
+                                
+                                # Busca os anexos na tabela complementar nova
+                                anexos_lanc = sb_request("lancamento_anexos", "GET", filtros={"lancamento_id": f"eq.{row_id}"})
+                                
+                                if not anexos_lanc:
+                                    st.caption("Nenhum arquivo anexado a este lançamento.")
+                                else:
+                                    for anexo in anexos_lanc:
+                                        col_a1, col_a2 = st.columns([3, 1])
+                                        link_download = obter_link_arquivo(anexo['url_storage'])
+                                        nome_exibicao = anexo.get('nome_original') or anexo['url_storage'].split('/')[-1]
+                                        
+                                        if link_download:
+                                            col_a1.markdown(f"📄 [{nome_exibicao}]({link_download})", unsafe_allow_html=True)
+                                        else:
+                                            col_a1.write(nome_exibicao)
+                                            
+                                        if col_a2.button("🗑️ Apagar", key=f"del_anexo_{anexo['id']}"):
+                                            try:
+                                                supabase.storage.from_("comprovantes").remove([anexo['url_storage']])
+                                                sb_request("lancamento_anexos", "DELETE", filtros={"id": f"eq.{anexo['id']}"})
+                                                st.cache_data.clear()
+                                                st.success("Anexo excluído com sucesso!")
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Erro ao excluir anexo: {e}")
+
+                                st.markdown("")
                                 if st.button("Fechar Detalhes", key=f"close_det_{row_id}"):
                                     st.session_state[f"show_detalhe_{row_id}"] = False
                                     st.rerun()
