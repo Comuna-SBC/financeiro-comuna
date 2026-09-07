@@ -1369,6 +1369,7 @@ elif page == "Painel de Eventos":
         with st.expander("➕ Criar Novo Evento", expanded=len(eventos_db) == 0):
             with st.form("form_evento", clear_on_submit=True):
                 nome_ev = st.text_input("Nome do Evento")
+                codigo_rec_ev = st.text_input("Código Contábil de Receita (Ex: 4.1.10.100.007)")
                 data_ev = st.date_input("Data do Evento", date.today())
                 valor_ev = st.number_input("Valor da Inscrição (R$)", min_value=0.0, format="%.2f")
                 vagas_ev = st.number_input("Total de Vagas", min_value=0, step=1)
@@ -1383,6 +1384,7 @@ elif page == "Painel de Eventos":
                     else:
                         sb_request("eventos", "POST", {
                             "nome": nome_ev.strip(), "descricao": descricao_ev.strip() or None,
+                            "codigo_receita_contabil": codigo_rec_ev,
                             "data_evento": str(data_ev), "valor_inscricao": float(valor_ev),
                             "vagas_total": int(vagas_ev), "chave_pix": chave_pix_ev.strip(),
                             "centro_custo": nome_ev.strip(), "status": "Aberto",
@@ -1399,6 +1401,7 @@ elif page == "Painel de Eventos":
                 
                 with st.form("form_edit_evento"):
                     n_nome_ev = st.text_input("Nome", value=ev_data['nome'])
+                    n_codigo_rec_ev = st.text_input("Código Contábil", value=ev_data.get('codigo_receita_contabil') or "")
                     n_data_ev = st.date_input("Data", pd.to_datetime(ev_data.get('data_evento', date.today())).date())
                     n_valor_ev = st.number_input("Valor (R$)", value=float(ev_data.get('valor_inscricao') or 0), format="%.2f")
                     n_vagas_ev = st.number_input("Vagas", value=int(ev_data.get('vagas_total') or 0))
@@ -1411,7 +1414,7 @@ elif page == "Painel de Eventos":
                     
                     if b_upd_ev:
                         sb_request("eventos", "PATCH", {
-                            "nome": n_nome_ev, "data_evento": str(n_data_ev), "valor_inscricao": float(n_valor_ev),
+                            "nome": n_nome_ev, "codigo_receita_contabil": n_codigo_rec_ev, "data_evento": str(n_data_ev), "valor_inscricao": float(n_valor_ev),
                             "vagas_total": int(n_vagas_ev), "chave_pix": n_pix, "descricao": n_desc
                         }, filtros={"id": f"eq.{ev_data['id']}"})
                         st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1); st.rerun()
@@ -1808,11 +1811,36 @@ elif page == "Exportar Contabilidade":
             idx_mes = MESES_PT.index(mes_exp) + 1
             dff = dff[dff['data_competencia'].dt.month == idx_mes]
 
-        exportar = dff[['data_competencia', 'tipo', 'descricao', 'categoria_nome', 'valor', 'status', 'centro_custo']].copy()
-        exportar['data_competencia'] = exportar['data_competencia'].dt.strftime('%d/%m/%Y')
-        exportar.columns = ['Data', 'Tipo', 'Descrição', 'Categoria', 'Valor', 'Status', 'Projeto']
+        # -----------------------------
+        # INÍCIO DO CRUZAMENTO DE/PARA
+        # -----------------------------
+        categorias = carregar_categorias()
+        contas = carregar("contas_bancarias")
+        eventos = carregar("eventos")
 
+        map_cat_cod = {str(c['id']): c.get('codigo_contabil', '') for c in categorias}
+        map_conta_nome = {str(c['id']): c['nome'] for c in contas}
+        map_conta_cod = {str(c['id']): c.get('codigo_contabil', '') for c in contas}
+        map_ev_cod = {e['nome']: e.get('codigo_receita_contabil', '') for e in eventos}
+
+        dff['Cód. Contábil Categoria'] = dff['categoria_id'].astype(str).map(map_cat_cod).fillna('')
+        dff['Conta Bancária Interna'] = dff['conta_bancaria_id'].astype(str).map(map_conta_nome).fillna('—')
+        dff['Cód. Contábil Conta'] = dff['conta_bancaria_id'].astype(str).map(map_conta_cod).fillna('')
+        dff['Cód. Contábil Evento'] = dff['centro_custo'].map(map_ev_cod).fillna('')
+
+        exportar = dff[['data_competencia', 'tipo', 'descricao', 'categoria_nome', 'Cód. Contábil Categoria', 
+                        'Conta Bancária Interna', 'Cód. Contábil Conta', 'centro_custo', 'Cód. Contábil Evento', 
+                        'valor', 'status']].copy()
+        
+        exportar['data_competencia'] = exportar['data_competencia'].dt.strftime('%d/%m/%Y')
+        exportar.columns = ['Data', 'Tipo', 'Descrição Interna', 'Categoria Interna', 'Cód. Contábil Categoria', 
+                            'Conta Bancária Interna', 'Cód. Contábil Conta', 'Evento/Projeto Interno', 'Cód. Contábil Evento', 
+                            'Valor (R$)', 'Status']
+        
         st.dataframe(exportar, use_container_width=True, hide_index=True)
+        # -----------------------------
+        # FIM DO CRUZAMENTO DE/PARA
+        # -----------------------------
 
         col_d1, col_d2, col_d3 = st.columns(3)
         
