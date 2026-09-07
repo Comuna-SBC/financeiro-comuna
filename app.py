@@ -877,7 +877,7 @@ elif page == "Visão Consolidada":
     # SEÇÃO DE DETALHAMENTO (DRILL-DOWN COM DOWNLOAD INDIVIDUAL)
     st.markdown("---")
     st.markdown("### 🔍 Detalhar Valores por Mês e Categoria")
-    st.markdown("Selecione os filtros abaixo para ver detalhadamente quais itens compõem a soma e gerencie os comprovantes de cada despesa diretamente.")
+    st.markdown("Selecione os filtros abaixo para ver detalhadamente quais itens compõem a soma e os comprovantes anexados (Modo Somente Leitura).")
 
     # Estilo CSS compacto atualizado para alinhar o botão e a linha perfeitamente
     st.markdown("""
@@ -969,48 +969,27 @@ elif page == "Visão Consolidada":
                     }]
 
                 if len(anexos_deste) > 0:
-                    if cols[6].button(f"📎 {len(anexos_deste)} anexo(s)", key=f"btn_vis_anexos_{row_id}", help="Ver/Gerenciar anexos"):
+                    if cols[6].button(f"📎 {len(anexos_deste)} anexo(s)", key=f"btn_vis_anexos_{row_id}", help="Visualizar anexos"):
                         st.session_state[f"show_vis_anexo_{row_id}"] = not st.session_state.get(f"show_vis_anexo_{row_id}", False)
                         st.rerun()
                 else:
                     cols[6].markdown("<div class='drill-row' style='color: #64748B;'>Sem anexo</div>", unsafe_allow_html=True)
 
-                # Painel expansível de gestão de anexos na Visão Consolidada
+                # Painel expansível de VISUALIZAÇÃO (Somente Leitura) de anexos na Visão Consolidada
                 if st.session_state.get(f"show_vis_anexo_{row_id}", False):
                     with st.container(border=True):
-                        st.markdown(f"**Gerenciar Anexos - {row['descricao']}**")
+                        st.markdown(f"**Documentos Anexados - {row['descricao']}**")
                         for anexo in anexos_deste:
-                            col_g1, col_g2 = st.columns([3, 1])
                             link_dl = obter_link_arquivo(anexo['url_storage'])
                             nome_ex = anexo.get('nome_original') or anexo['url_storage'].split('/')[-1]
                             
                             if link_dl:
-                                col_g1.markdown(f"📄 [{nome_ex}]({link_dl})", unsafe_allow_html=True)
+                                st.markdown(f"📄 [{nome_ex}]({link_dl})", unsafe_allow_html=True)
                             else:
-                                col_g1.write(nome_ex)
+                                st.write(nome_ex)
                                 
-                            if anexo.get('id') == 'legacy':
-                                if col_g2.button("🗑️ Apagar", key=f"del_leg_vis_{row_id}"):
-                                    try:
-                                        supabase.storage.from_("comprovantes").remove([anexo['url_storage']])
-                                        sb_request("lancamentos", "PATCH", {"url_anexo": None}, filtros={"id": f"eq.{row_id}"})
-                                        st.cache_data.clear()
-                                        st.success("Anexo excluído!")
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"Erro: {e}")
-                            else:
-                                if col_g2.button("🗑️ Apagar", key=f"del_novo_vis_{anexo['id']}"):
-                                    try:
-                                        supabase.storage.from_("comprovantes").remove([anexo['url_storage']])
-                                        sb_request("lancamento_anexos", "DELETE", filtros={"id": f"eq.{anexo['id']}"})
-                                        st.cache_data.clear()
-                                        st.success("Anexo excluído!")
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"Erro: {e}")
-                                        
-                        if st.button("Fechar Gerenciador", key=f"close_vis_{row_id}"):
+                        st.markdown("")
+                        if st.button("Fechar", key=f"close_vis_{row_id}", use_container_width=True):
                             st.session_state[f"show_vis_anexo_{row_id}"] = False
                             st.rerun()
                 
@@ -1027,7 +1006,6 @@ elif page == "Visão Consolidada":
                 data=excel_detalhe,
                 file_name=f"Detalhes_{ano_sel}_{mes_drill}_{cat_drill}.xlsx".replace(" ", "_"),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
 
 # ==========================================
 # ==========================================
