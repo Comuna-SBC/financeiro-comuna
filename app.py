@@ -1342,20 +1342,46 @@ elif page == "Conciliação Bancária":
 
         with tab_manual:
             st.subheader("Lista de Lançamentos da Conta")
+            
             if df_conta.empty:
                 st.info("Nenhum lançamento concluído nesta conta ainda.")
             else:
-                for _, row in df_conta.sort_values('data_competencia', ascending=False).iterrows():
-                    c1, c2, c3, c4 = st.columns([3, 1.5, 1.5, 1])
-                    c1.write(row['descricao'])
-                    c2.write(row['data_competencia'].strftime('%d/%m/%Y'))
-                    c3.write(fmt_moeda(row['valor']) if row['tipo'] == 'Entrada' else f"-{fmt_moeda(row['valor'])}")
-                    marcado = bool(row.get('conciliado'))
-                    novo_valor = c4.checkbox("Conciliado", value=marcado, key=f"conc_{row['id']}")
-                    if novo_valor != marcado:
-                        res = sb_request("lancamentos", "PATCH", {"conciliado": novo_valor}, filtros={"id": f"eq.{row['id']}"})
-                        if res is not None:
-                            st.cache_data.clear()
+                # Filtros de Otimização para evitar poluição visual
+                col_f1, col_f2, col_f3 = st.columns(3)
+                
+                # Filtro por Mês/Ano com base nos dados disponíveis
+                meses_disponiveis = sorted(df_conta['data_competencia'].dt.strftime('%Y-%m').unique().tolist(), reverse=True)
+                mes_padrao = meses_disponiveis[0] if meses_disponiveis else None
+                
+                filtro_mes = col_f1.selectbox("Filtrar por Mês", ["Todos"] + meses_disponiveis, key="concil_filtro_mes")
+                apenas_nao_conciliados = col_f2.checkbox("Mostrar apenas não conciliados", value=True, key="concil_so_pendentes")
+                
+                # Aplicação dos filtros no DataFrame da conta
+                dff_manual = df_conta.copy()
+                if filtro_mes != "Todos":
+                    dff_manual = dff_manual[dff_manual['data_competencia'].dt.strftime('%Y-%m') == filtro_mes]
+                if apenas_nao_conciliados:
+                    dff_manual = dff_manual[dff_manual['conciliado'] != True]
+
+                st.caption(exibindo := f"Exibindo {len(dff_manual)} lançamento(s) para os filtros selecionados.")
+                
+                if dff_manual.empty:
+                    st.success("Nenhum lançamento pendente de conciliação para este filtro! 🎉")
+                else:
+                    for _, row in dff_manual.sort_values('data_competencia', ascending=False).iterrows():
+                        c1, c2, c3, c4 = st.columns([3, 1.5, 1.5, 1])
+                        c1.write(row['descricao'])
+                        c2.write(row['data_competencia'].strftime('%d/%m/%Y'))
+                        c3.write(fmt_moeda(row['valor']) if row['tipo'] == 'Entrada' else f"-{fmt_moeda(row['valor'])}")
+                        
+                        marcado = bool(row.get('conciliado'))
+                        novo_valor = c4.checkbox("Conciliado", value=marcado, key=f"conc_{row['id']}")
+                        
+                        if novo_valor != marcado:
+                            res = sb_request("lancamentos", "PATCH", {"conciliado": novo_valor}, filtros={"id": f"eq.{row['id']}"})
+                            if res is not None:
+                                st.cache_data.clear()
+                                st.rerun()
 # ==========================================
 # ==========================================
 # PAINEL DE EVENTOS
