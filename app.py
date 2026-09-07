@@ -475,14 +475,33 @@ contas_bancarias_db = carregar("contas_bancarias")
 if "page" not in st.session_state:
     st.session_state.page = "Resumo do Dia"
 
-# CSS para zerar o topo da barra lateral e alinhar os botões
+# CSS agressivo para zerar completamente o topo da sidebar e alinhar botões
 st.sidebar.markdown("""
     <style>
+    /* Remove a navegação nativa do Streamlit */
     div[data-testid="stSidebarNav"] {display: none;}
     
-    /* Remove o espaço em branco padrão no topo da barra lateral do Streamlit */
-    section[data-testid="stSidebar"] div.stMainBlockContainer,
-    section[data-testid="stSidebar"] div[data-testid="stVerticalBlock"] {
+    /* Remove o padding do container principal da sidebar */
+    [data-testid="stSidebar"] {
+        padding-top: 0rem !important;
+    }
+    
+    /* Zera o espaço do cabeçalho da sidebar (onde fica o ícone de recolher) */
+    [data-testid="stSidebarHeader"] {
+        padding-top: 0rem !important;
+        padding-bottom: 0rem !important;
+        min-height: 0rem !important;
+        height: auto !important;
+    }
+    
+    /* Zera o preenchimento do conteúdo de usuário da sidebar */
+    [data-testid="stSidebarUserContent"] {
+        padding-top: 0rem !important;
+        margin-top: -1rem !important; /* Puxa levemente para cima para colar de vez */
+    }
+    
+    /* Fallback genérico para o primeiro container da sidebar */
+    section[data-testid="stSidebar"] > div:first-child {
         padding-top: 0rem !important;
     }
     
@@ -524,7 +543,7 @@ def nav_button(label, icon):
         st.session_state.page = label
         st.rerun()
 
-st.sidebar.markdown("<h2 style='color:#0F172A;font-weight:800;padding-top:0px;margin-bottom:0px;'>⛪ Gestão Financeira </h2>", unsafe_allow_html=True)
+st.sidebar.markdown("<h2 style='color:#0F172A;font-weight:800;padding-top:0px;margin-top:0px;margin-bottom:0px;'>⛪ Gestão Financeira </h2>", unsafe_allow_html=True)
 
 secao("OPERACIONAL")
 nav_button("Resumo do Dia", "🏠")
