@@ -1044,7 +1044,7 @@ elif page == "Tesouraria":
     tab1, tab2, tab3, tab4 = st.tabs([
         "📝 Novo Lançamento", 
         "⏳ Contas a Pagar/Receber", 
-        "📜 Histórico Completo", 
+        "📜 Lançamentos", 
         "🔁 Regras Recorrentes"
     ], key="tesouraria_active_tab", on_change="rerun")
 
