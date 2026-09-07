@@ -244,6 +244,10 @@ def fmt_moeda(v):
     except Exception:
         return "R$ 0,00"
 
+@st.cache_data(ttl=15)
+def carregar_usuarios():
+    return sb_request("usuarios", "GET") or []
+
 def safe_map_moeda(df):
     try:
         return df.map(fmt_moeda)
@@ -466,73 +470,30 @@ if qp.get("pagina") == "inscricao":
     st.stop()
 
 # ==========================================
-# MENU LATERAL INTERNO
+# MENU LATERAL INTERNO E CONTROLE DE ACESSO (RBAC)
 # ==========================================
 categorias_db = carregar_categorias()
 eventos_db = carregar("eventos")
 contas_bancarias_db = carregar("contas_bancarias")
+usuarios_db = carregar_usuarios()
+
+# SIMULADOR DE LOGIN (Para testes de perfil)
+st.sidebar.markdown("<h4 style='margin-top:0px;'>🔑 Acesso ao Sistema</h4>", unsafe_allow_html=True)
+if not usuarios_db:
+    st.sidebar.warning("Crie o primeiro usuário na aba Gestão de Usuários.")
+    usuario_logado = {"nome": "Admin Padrão", "perfil": "Visão Total Tesouraria", "id": None}
+else:
+    opcoes_login = {u['nome']: u for u in usuarios_db}
+    nome_logado = st.sidebar.selectbox("Simular acesso como:", list(opcoes_login.keys()))
+    usuario_logado = opcoes_login[nome_logado]
+
+st.session_state["usuario_logado"] = usuario_logado
+perfil_ativo = usuario_logado.get("perfil", "Visão Total Tesouraria")
 
 if "page" not in st.session_state:
-    st.session_state.page = "Resumo do Dia"
+    st.session_state.page = "Resumo do Dia" if perfil_ativo == "Visão Total Tesouraria" else ("Visão Consolidada" if perfil_ativo == "Visão Conselho" else "Painel de Eventos")
 
-# CSS agressivo para zerar completamente o topo da sidebar e alinhar botões
-st.sidebar.markdown("""
-    <style>
-    /* Remove a navegação nativa do Streamlit */
-    div[data-testid="stSidebarNav"] {display: none;}
-    
-    /* Remove o padding do container principal da sidebar */
-    [data-testid="stSidebar"] {
-        padding-top: 0rem !important;
-    }
-    
-    /* Zera o espaço do cabeçalho da sidebar (onde fica o ícone de recolher) */
-    [data-testid="stSidebarHeader"] {
-        padding-top: 0rem !important;
-        padding-bottom: 0rem !important;
-        min-height: 0rem !important;
-        height: auto !important;
-    }
-    
-    /* Zera o preenchimento do conteúdo de usuário da sidebar */
-    [data-testid="stSidebarUserContent"] {
-        padding-top: 0rem !important;
-        margin-top: -1rem !important; /* Puxa levemente para cima para colar de vez */
-    }
-    
-    /* Fallback genérico para o primeiro container da sidebar */
-    section[data-testid="stSidebar"] > div:first-child {
-        padding-top: 0rem !important;
-    }
-    
-    /* Força o container do botão a alinhar à esquerda com o recuo ajustado */
-    .stButton > button {
-        display: flex !important;
-        justify-content: flex-start !important;
-        align-items: center !important;
-        text-align: left !important;
-        padding-top: 0.3rem !important;
-        padding-bottom: 0.3rem !important;
-        padding-left: 1.0rem !important;
-        min-height: 2rem !important;
-        margin-bottom: -0.2rem !important;
-        width: 100% !important;
-    }
-    
-    /* Força o elemento de texto interno do Streamlit a acompanhar o recuo */
-    .stButton > button div {
-        display: flex !important;
-        justify-content: flex-start !important;
-        align-items: center !important;
-        width: 100% !important;
-    }
-    
-    .stButton > button p {
-        text-align: left !important;
-        margin: 0 !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# CSS agressivo omitido por brevidade (mantenha o seu CSS atual da sidebar aqui)
 
 def secao(nome):
     st.sidebar.markdown(f"<p style='color:#94A3B8;font-size:0.68rem;font-weight:700;letter-spacing:0.08em;margin:10px 0 2px 4px;'>{nome}</p>", unsafe_allow_html=True)
@@ -543,34 +504,42 @@ def nav_button(label, icon):
         st.session_state.page = label
         st.rerun()
 
-st.sidebar.markdown("<h2 style='color:#0F172A;font-weight:800;padding-top:0px;margin-top:0px;margin-bottom:0px;'>⛪ Gestão Financeira </h2>", unsafe_allow_html=True)
-
-secao("OPERACIONAL")
-nav_button("Resumo do Dia", "🏠")
-nav_button("Tesouraria", "💰")
-nav_button("Conciliação Bancária", "🏦")
-nav_button("Visão Consolidada", "📋")
-nav_button("Categorias", "🏷️")
-
-secao("ESTRATÉGICO")
-nav_button("Metas e Orçamentos", "🎯")
-
-secao("RELATÓRIOS")
-nav_button("Analytics Financeiro", "📊")
-nav_button("Exportar Contabilidade", "📥")
-
-# Linha divisória compacta para isolar o módulo de eventos
 st.sidebar.markdown("<hr style='margin: 8px 0; border-color: #E2E8F0;'>", unsafe_allow_html=True)
 
-secao("GESTÃO DE EVENTOS")
-nav_button("Painel de Eventos", "🎫")
-nav_button("Inscrições e Comprovantes", "✅")
+# LÓGICA DE EXIBIÇÃO DO MENU BASEADA NO PERFIL
+if perfil_ativo == "Visão Total Tesouraria":
+    secao("OPERACIONAL")
+    nav_button("Resumo do Dia", "🏠")
+    nav_button("Tesouraria", "💰")
+    nav_button("Conciliação Bancária", "🏦")
+    nav_button("Visão Consolidada", "📋")
+    nav_button("Categorias", "🏷️")
 
-st.sidebar.markdown("<hr style='margin: 8px 0 4px 0; border-color: #E2E8F0;'>", unsafe_allow_html=True)
-st.sidebar.caption("Gestão Financeira • Final")
+    secao("ESTRATÉGICO")
+    nav_button("Metas e Orçamentos", "🎯")
+
+    secao("RELATÓRIOS")
+    nav_button("Analytics Financeiro", "📊")
+    nav_button("Exportar Contabilidade", "📥")
+
+if perfil_ativo in ["Visão Total Tesouraria", "Visão Conselho"]:
+    if perfil_ativo == "Visão Conselho":
+        secao("VISÃO GERAL")
+        nav_button("Visão Consolidada", "📋")
+        nav_button("Analytics Financeiro", "📊")
+
+if perfil_ativo in ["Visão Total Tesouraria", "Visão Eventos"]:
+    st.sidebar.markdown("<hr style='margin: 8px 0; border-color: #E2E8F0;'>", unsafe_allow_html=True)
+    secao("GESTÃO DE EVENTOS")
+    nav_button("Painel de Eventos", "🎫")
+    nav_button("Inscrições e Comprovantes", "✅")
+
+if perfil_ativo == "Visão Total Tesouraria":
+    st.sidebar.markdown("<hr style='margin: 8px 0 4px 0; border-color: #E2E8F0;'>", unsafe_allow_html=True)
+    secao("ADMINISTRAÇÃO")
+    nav_button("Gestão de Usuários", "👥")
 
 page = st.session_state.page
-
 # ==========================================
 # RESUMO DO DIA 
 # ==========================================
@@ -1968,6 +1937,12 @@ elif page == "Painel de Eventos":
         with st.expander("➕ Criar Novo Evento", expanded=len(eventos_db) == 0):
             with st.form("form_evento", clear_on_submit=True):
                 nome_ev = st.text_input("Nome do Evento")
+                
+                c_lead1, c_lead2 = st.columns(2)
+                lideres_opcoes = {u['nome']: u['id'] for u in usuarios_db if u.get('perfil') == 'Visão Eventos'}
+                lider_sel = c_lead1.selectbox("Líder Responsável", ["Nenhum"] + list(lideres_opcoes.keys()))
+                codigo_centavos = c_lead2.text_input("Código de Centavos (Ex: 07)", max_chars=2, help="Usado para identificar pagamentos via PIX automaticamente no extrato.")
+
                 codigo_rec_ev = st.text_input("Código Contábil de Receita (Ex: 4.1.10.100.007)")
                 data_ev = st.date_input("Data do Evento", date.today())
                 valor_ev = st.number_input("Valor da Inscrição (R$)", min_value=0.0, format="%.2f")
@@ -1981,9 +1956,12 @@ elif page == "Painel de Eventos":
                     if not nome_ev.strip() or valor_ev <= 0 or vagas_ev <= 0 or not chave_pix_ev.strip():
                         st.warning("Preencha Nome, Valor > 0, Vagas > 0 e Chave Pix.")
                     else:
+                        lider_id_val = lideres_opcoes.get(lider_sel) if lider_sel != "Nenhum" else None
                         sb_request("eventos", "POST", {
                             "nome": nome_ev.strip(), "descricao": descricao_ev.strip() or None,
                             "codigo_receita_contabil": codigo_rec_ev,
+                            "lider_id": lider_id_val,
+                            "codigo_centavos": codigo_centavos.strip() if codigo_centavos else None,
                             "data_evento": str(data_ev), "valor_inscricao": float(valor_ev),
                             "vagas_total": int(vagas_ev), "chave_pix": chave_pix_ev.strip(),
                             "centro_custo": nome_ev.strip(), "status": "Aberto",
@@ -2504,3 +2482,73 @@ elif page == "Exportar Contabilidade":
                         mime="application/zip",
                         use_container_width=True
                     )
+
+# ==========================================
+# GESTÃO DE USUÁRIOS
+# ==========================================
+elif page == "Gestão de Usuários":
+    st.title("Gestão de Usuários e Perfis")
+    st.markdown("Crie acessos e defina as permissões para a Tesouraria, Conselho ou Líderes de Eventos.")
+
+    col_nova, col_edit = st.columns(2)
+    with col_nova:
+        with st.expander("➕ Novo Usuário", expanded=True):
+            with st.form("form_usuario", clear_on_submit=True):
+                n_nome = st.text_input("Nome Completo *")
+                n_email = st.text_input("Email *")
+                n_tel = st.text_input("Telefone (WhatsApp) *")
+                n_cpf = st.text_input("CPF (Opcional)")
+                n_perfil = st.selectbox("Perfil de Acesso *", ["Visão Total Tesouraria", "Visão Conselho", "Visão Eventos"])
+                
+                if st.form_submit_button("Cadastrar Usuário", use_container_width=True, type="primary"):
+                    if not n_nome or not n_email or not n_tel:
+                        st.warning("⚠️ Nome, Email e Telefone são obrigatórios.")
+                    else:
+                        payload = {
+                            "nome": n_nome, "email": n_email, "telefone": n_tel, 
+                            "cpf": n_cpf if n_cpf else None, "perfil": n_perfil, "status": "Ativo"
+                        }
+                        res = sb_request("usuarios", "POST", [payload])
+                        if res is not None:
+                            st.cache_data.clear()
+                            st.success("Usuário cadastrado com sucesso!")
+                            time.sleep(1)
+                            st.rerun()
+
+    with col_edit:
+        with st.expander("✏️ Editar ou Excluir Usuário"):
+            if usuarios_db:
+                user_opcoes = {f"{u['nome']} ({u['perfil']})": u for u in usuarios_db}
+                user_sel = st.selectbox("Selecione o Usuário", list(user_opcoes.keys()))
+                u_data = user_opcoes[user_sel]
+
+                with st.form("form_edit_user"):
+                    e_nome = st.text_input("Nome Completo", value=u_data.get('nome', ''))
+                    e_email = st.text_input("Email", value=u_data.get('email', ''))
+                    e_tel = st.text_input("Telefone", value=u_data.get('telefone', ''))
+                    e_cpf = st.text_input("CPF", value=u_data.get('cpf', ''))
+                    
+                    perfis_lista = ["Visão Total Tesouraria", "Visão Conselho", "Visão Eventos"]
+                    idx_perfil = perfis_lista.index(u_data.get('perfil')) if u_data.get('perfil') in perfis_lista else 0
+                    e_perfil = st.selectbox("Perfil de Acesso", perfis_lista, index=idx_perfil)
+                    
+                    c1, c2 = st.columns(2)
+                    btn_upd = c1.form_submit_button("💾 Atualizar", use_container_width=True)
+                    btn_del = c2.form_submit_button("🗑️ Excluir", use_container_width=True)
+
+                    if btn_upd:
+                        payload = {"nome": e_nome, "email": e_email, "telefone": e_tel, "cpf": e_cpf, "perfil": e_perfil}
+                        sb_request("usuarios", "PATCH", payload, filtros={"id": f"eq.{u_data['id']}"})
+                        st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1); st.rerun()
+                    if btn_del:
+                        sb_request("usuarios", "DELETE", filtros={"id": f"eq.{u_data['id']}"})
+                        st.cache_data.clear(); st.success("Excluído!"); time.sleep(1); st.rerun()
+            else:
+                st.info("Nenhum usuário cadastrado.")
+
+    st.markdown("---")
+    st.markdown("### Usuários Cadastrados")
+    if usuarios_db:
+        df_users = pd.DataFrame(usuarios_db)[['nome', 'email', 'telefone', 'perfil']]
+        df_users.columns = ['Nome', 'Email', 'Telefone', 'Perfil']
+        st.dataframe(df_users, use_container_width=True, hide_index=True)
