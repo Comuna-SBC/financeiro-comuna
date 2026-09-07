@@ -1613,19 +1613,18 @@ elif page == "Painel de Eventos":
                 with st.form("form_edit_evento"):
                     n_nome_ev = st.text_input("Nome", value=ev_data['nome'])
                     n_codigo_rec_ev = st.text_input("Código Contábil", value=ev_data.get('codigo_receita_contabil') or "")
-                    # Tratamento seguro para evitar erro caso a data venha vazia ou nula do banco
-    raw_data_ev = ev_data.get('data_evento')
-    if pd.isna(raw_data_ev) or not raw_data_ev:
-        default_date = date.today()
-    else:
-        try:
-            default_date = pd.to_datetime(raw_data_ev).date()
-        except Exception:
-            default_date = date.today()
+                    
+                    # Tratamento seguro e limpo para evitar erro de data nula ou inválida
+                    raw_data_ev = ev_data.get('data_evento')
+                    if pd.isna(raw_data_ev) or not raw_data_ev:
+                        default_date = date.today()
+                    else:
+                        try:
+                            default_date = pd.to_datetime(raw_data_ev).date()
+                        except Exception:
+                            default_date = date.today()
 
-    n_data_ev = st.date_input("Data", default_date)
-    n_valor_ev = st.number_input("Valor (R$)", value=float(ev_data.get('valor_inscricao') or 0), format="%.2f")
-    n_data_ev = st.date_input("Data", default_date)
+                    n_data_ev = st.date_input("Data", default_date)
                     n_valor_ev = st.number_input("Valor (R$)", value=float(ev_data.get('valor_inscricao') or 0), format="%.2f")
                     n_vagas_ev = st.number_input("Vagas", value=int(ev_data.get('vagas_total') or 0))
                     n_pix = st.text_input("Pix", value=ev_data.get('chave_pix') or "")
