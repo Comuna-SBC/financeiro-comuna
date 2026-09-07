@@ -1179,10 +1179,11 @@ elif page == "Conciliação Bancária":
             with st.form("form_conta", clear_on_submit=True):
                 nome_conta = st.text_input("Nome da Conta (Ex: Itaú Principal)")
                 tipo_conta = st.selectbox("Tipo", ["Corrente", "Poupança", "Investimento"], key="tipo_conta_novo")
+                codigo_conta = st.text_input("Código Contábil (Ex: 1.1.10.200.003)")
                 saldo_inicial = st.number_input("Saldo Inicial (R$)", min_value=0.0, format="%.2f")
                 if st.form_submit_button("Cadastrar Conta", use_container_width=True):
                     if nome_conta:
-                        res = sb_request("contas_bancarias", "POST", {"nome": nome_conta, "tipo": tipo_conta, "saldo_inicial": float(saldo_inicial)})
+                        res = sb_request("contas_bancarias", "POST", {"nome": nome_conta, "tipo": tipo_conta, "codigo_contabil": codigo_conta, "saldo_inicial": float(saldo_inicial)})
                         if res is not None:
                             st.cache_data.clear(); st.success("Conta cadastrada!"); time.sleep(1); st.rerun()
                     else:
@@ -1198,6 +1199,7 @@ elif page == "Conciliação Bancária":
                 with st.form("form_edit_conta"):
                     n_nome = st.text_input("Nome da Conta", value=conta_data['nome'])
                     n_tipo = st.selectbox("Tipo", ["Corrente", "Poupança", "Investimento"], index=["Corrente", "Poupança", "Investimento"].index(conta_data.get('tipo', 'Corrente')), key="tipo_conta_edit")
+                    n_codigo = st.text_input("Código Contábil", value=conta_data.get('codigo_contabil') or "")
                     n_saldo = st.number_input("Saldo Inicial (R$)", value=float(conta_data.get('saldo_inicial') or 0.0), format="%.2f")
                     
                     c_btn1, c_btn2 = st.columns(2)
@@ -1205,7 +1207,7 @@ elif page == "Conciliação Bancária":
                     btn_del = c_btn2.form_submit_button("🗑️ Excluir", use_container_width=True)
                     
                     if btn_upd:
-                        res = sb_request("contas_bancarias", "PATCH", {"nome": n_nome, "tipo": n_tipo, "saldo_inicial": float(n_saldo)}, filtros={"id": f"eq.{conta_data['id']}"})
+                        res = sb_request("contas_bancarias", "PATCH", {"nome": n_nome, "tipo": n_tipo, "codigo_contabil": n_codigo, "saldo_inicial": float(n_saldo)}, filtros={"id": f"eq.{conta_data['id']}"})
                         if res is not None:
                             st.cache_data.clear(); st.success("Atualizada!"); time.sleep(1); st.rerun()
                     if btn_del:
