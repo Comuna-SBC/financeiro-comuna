@@ -491,24 +491,26 @@ nav_button("Resumo do Dia", "🏠")
 nav_button("Tesouraria", "💰")
 nav_button("Conciliação Bancária", "🏦")
 nav_button("Visão Consolidada", "📋")
-
-secao("GESTÃO DE EVENTOS")
-nav_button("Painel de Eventos", "🎫")
-nav_button("Inscrições e Comprovantes", "✅")
+nav_button("Categorias", "🏷️")
 
 secao("ESTRATÉGICO")
 nav_button("Metas e Orçamentos", "🎯")
-nav_button("Categorias", "🏷️")
 
 secao("RELATÓRIOS")
 nav_button("Analytics Financeiro", "📊")
 nav_button("Exportar Contabilidade", "📤")
 
+# Linha divisória para isolar o módulo de eventos
+st.sidebar.markdown("<br><hr style='margin: 0; border-color: #E2E8F0;'><br>", unsafe_allow_html=True)
+
+secao("GESTÃO DE EVENTOS")
+nav_button("Painel de Eventos", "🎫")
+nav_button("Inscrições e Comprovantes", "✅")
+
 st.sidebar.markdown("---")
 st.sidebar.caption("Gestão Financeira • Final")
 
 page = st.session_state.page
-
 # ==========================================
 # ==========================================
 # ==========================================
