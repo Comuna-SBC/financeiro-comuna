@@ -988,9 +988,15 @@ elif page == "Tesouraria":
                             "categoria_id": opcoes_cats[categoria_sel],
                             "conta_bancaria_id": contas_opcoes.get(conta_sel),
                             "centro_custo": None if tag == "Nenhum" else tag,
-                            "recorrente": bool(recorrente)  # CORRIGIDO AQUI
+                            "recorrente": bool(recorrente)
                         }
                         
+                        # Se for recorrente, adiciona os campos específicos ao payload
+                        if recorrente:
+                            payload_lanc["dia_vencimento"] = int(dia_vencimento)
+                            payload_lanc["data_fim"] = str(data_fim_rec)
+                            payload_lanc["data_fim_recorrencia"] = str(data_fim_rec) # Fallback para garantir compatibilidade
+
                         if status_lanc == "Concluído":
                             payload_lanc["data_pagamento"] = str(data_venc)
 
