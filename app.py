@@ -170,17 +170,18 @@ def processar_e_salvar_anexos(arquivos_upload, lancamento_id, data_lanc, categor
             else:
                 content_type = "application/pdf"
             
-            # Upload para o Storage do Supabase
+            # Upload para o Storage do Supabase com o nome padronizado
             supabase.storage.from_("comprovantes").upload(
                 nome_padronizado, bytes_data, 
                 file_options={"content-type": content_type, "upsert": "true"}
             )
             
-            # Registra na tabela complementar de anexos
+            # Registra na tabela complementar garantindo que o nome gravado seja o padronizado
+            nome_limpo_arquivo = nome_padronizado.split('/')[-1]
             sb_request("lancamento_anexos", "POST", {
                 "lancamento_id": lancamento_id,
                 "url_storage": nome_padronizado,
-                "nome_original": arquivo.name
+                "nome_original": nome_limpo_arquivo
             })
         except Exception as e:
             st.error(f"Erro ao salvar o anexo {arquivo.name}: {e}")
