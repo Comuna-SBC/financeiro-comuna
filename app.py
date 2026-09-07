@@ -475,12 +475,12 @@ contas_bancarias_db = carregar("contas_bancarias")
 if "page" not in st.session_state:
     st.session_state.page = "Resumo do Dia"
 
-# CSS refinado para alinhar de verdade o texto e o ícone à esquerda do botão
+# CSS refinado com leve recuo à esquerda para um visual mais elegante
 st.sidebar.markdown("""
     <style>
     div[data-testid="stSidebarNav"] {display: none;}
     
-    /* Força o container do botão a alinhar à esquerda */
+    /* Força o container do botão a alinhar à esquerda com um pequeno recuo */
     .stButton > button {
         display: flex !important;
         justify-content: flex-start !important;
@@ -488,13 +488,13 @@ st.sidebar.markdown("""
         text-align: left !important;
         padding-top: 0.3rem !important;
         padding-bottom: 0.3rem !important;
-        padding-left: 0.6rem !important;
+        padding-left: 1.0rem !important; /* Recuo sutil para a direita */
         min-height: 2rem !important;
         margin-bottom: -0.2rem !important;
         width: 100% !important;
     }
     
-    /* Força o elemento de texto interno do Streamlit a não centralizar */
+    /* Força o elemento de texto interno do Streamlit a acompanhar o recuo */
     .stButton > button div {
         display: flex !important;
         justify-content: flex-start !important;
@@ -545,7 +545,6 @@ st.sidebar.markdown("<hr style='margin: 8px 0 4px 0; border-color: #E2E8F0;'>", 
 st.sidebar.caption("Gestão Financeira • Final")
 
 page = st.session_state.page
-
 
 
 # ==========================================
