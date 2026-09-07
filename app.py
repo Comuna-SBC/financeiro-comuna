@@ -552,7 +552,6 @@ st.sidebar.caption("Gestão Financeira • Final")
 
 page = st.session_state.page
 
-
 # ==========================================
 # RESUMO DO DIA 
 # ==========================================
