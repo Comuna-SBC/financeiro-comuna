@@ -575,11 +575,28 @@ page = st.session_state.page
 # RESUMO DO DIA 
 # ==========================================
 if page == "Resumo do Dia":
-    # CSS específico para puxar o conteúdo principal da tela para o topo
+    # CSS para puxar o conteúdo para o topo e forçar a mesma altura (dimensão) em todas as 4 caixas
     st.markdown("""
         <style>
         div.stMainBlockContainer, div[data-testid="stVerticalBlock"] {
             padding-top: 0rem !important;
+        }
+        [data-testid="stHorizontalBlock"] {
+            align-items: stretch;
+        }
+        [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+            display: flex;
+            flex-direction: column;
+        }
+        [data-testid="stHorizontalBlock"] > [data-testid="column"] > div {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        [data-testid="stHorizontalBlock"] > [data-testid="column"] > div > div[data-testid="stVerticalBlock"] {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -594,8 +611,6 @@ if page == "Resumo do Dia":
 
     hoje = pd.Timestamp(date.today())
     
-    # Calcula o saldo individual por conta considerando o saldo inicial + movimentações da conta
-    # (Caso a sua base traga o saldo consolidado, calculamos aqui o detalhamento por conta)
     saldos_por_conta = []
     saldo_consolidado = 0.0
 
@@ -604,7 +619,6 @@ if page == "Resumo do Dia":
         c_nome = conta.get("nome", "Conta")
         c_saldo_ini = float(conta.get("saldo_inicial") or 0)
         
-        # Filtra lançamentos concluídos desta conta específica se houver o campo conta_bancaria_id
         if not df.empty and "conta_bancaria_id" in df.columns and "status" in df.columns:
             l_conta = df[(df["conta_bancaria_id"] == c_id) & (df["status"] == "Concluído")]
             ent = l_conta[l_conta["tipo"] == "Entrada"]["valor"].sum()
@@ -636,16 +650,29 @@ if page == "Resumo do Dia":
     eventos_por_id = {str(e.get("id")): e for e in eventos_resumo}
 
     col1, col2, col3, col4 = st.columns(4)
+    
     with col1:
-        st.metric("Saldo Consolidado", fmt_moeda(saldo_consolidado))
-        # Exibe o detalhamento das contas de forma limpa abaixo da métrica principal
-        with st.expander("🔍 Ver contas"):
+        with st.container(border=True):
+            st.caption("Saldo Consolidado")
+            st.markdown(f"<h2 style='margin:0; font-size: 1.5rem; color: #059669;'>{fmt_moeda(saldo_consolidado)}</h2>", unsafe_allow_html=True)
+            st.markdown("<hr style='margin: 8px 0; border: none; border-top: 1px solid #E2E8F0;'>", unsafe_allow_html=True)
             for sc in saldos_por_conta:
-                st.caption(f"• {sc['nome']}: **{fmt_moeda(sc['saldo'])}**")
+                st.markdown(f"<p style='margin: 2px 0; font-size: 0.8rem; color: #475569;'>• {sc['nome']}: <b>{fmt_moeda(sc['saldo'])}</b></p>", unsafe_allow_html=True)
                 
-    col2.metric("A Pagar Hoje", str(len(contas_hoje)))
-    col3.metric("Contas Atrasadas", str(len(contas_atrasadas)))
-    col4.metric("Recorrências Expirando", str(len(recorrencias_expirando)))
+    with col2:
+        with st.container(border=True):
+            st.caption("A Pagar Hoje")
+            st.markdown(f"<h2 style='margin:0; font-size: 1.8rem;'>{len(contas_hoje)}</h2>", unsafe_allow_html=True)
+            
+    with col3:
+        with st.container(border=True):
+            st.caption("Contas Atrasadas")
+            st.markdown(f"<h2 style='margin:0; font-size: 1.8rem;'>{len(contas_atrasadas)}</h2>", unsafe_allow_html=True)
+            
+    with col4:
+        with st.container(border=True):
+            st.caption("Recorrências Expirando")
+            st.markdown(f"<h2 style='margin:0; font-size: 1.8rem;'>{len(recorrencias_expirando)}</h2>", unsafe_allow_html=True)
 
     if not recorrencias_expirando.empty:
         st.warning(f"⚠️ Atenção: Existem **{len(recorrencias_expirando)}** lançamentos recorrentes com data final de recorrência programada para este mês de {MESES_PT[hoje.month-1].lower()}. Verifique a necessidade de renovação.")
