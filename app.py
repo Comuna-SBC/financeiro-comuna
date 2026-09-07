@@ -616,8 +616,7 @@ if page == "Resumo do Dia":
 # ==========================================
 # ==========================================
 # ==========================================
-# VISÃO CONSOLIDADA
-# ==========================================
+## ==========================================
 elif page == "Visão Consolidada":
     st.title("📋 Visão Consolidada")
     st.markdown("Acompanhe o balanço mensal de Entradas e Saídas consolidado por categoria.")
@@ -731,7 +730,7 @@ elif page == "Visão Consolidada":
     # 2. SEÇÃO DE DETALHAMENTO (DRILL-DOWN COM DOWNLOAD INDIVIDUAL)
     st.markdown("---")
     st.markdown("### 🔍 Detalhar Valores por Mês e Categoria")
-    st.markdown("Selecione os filtros abaixo para ver detalhadamente quais itens compõem a soma e baixe os comprovantes de cada despesa diretamente.")
+    st.markdown("Selecione os filtros abaixo para ver detalhadamente quais itens compõem a soma e gerencie os comprovantes de cada despesa diretamente.")
 
     # Estilo CSS compacto para ajustar a fonte e manter cada item em uma linha só
     st.markdown("""
@@ -768,11 +767,21 @@ elif page == "Visão Consolidada":
         else:
             st.markdown("#### Lista de Lançamentos e Comprovantes")
             
+            # Pré-carrega todos os anexos para cruzamento rápido em memória
+            todos_anexos = sb_request("lancamento_anexos", "GET")
+            mapa_anexos = {}
+            if todos_anexos:
+                for anexo in todos_anexos:
+                    l_id = anexo['lancamento_id']
+                    if l_id not in mapa_anexos:
+                        mapa_anexos[l_id] = []
+                    mapa_anexos[l_id].append(anexo)
+
             # Ordenação solicitada: 1º Saídas em cima e Entradas embaixo, 2º Data mais recente em cima
             df_detalhe['ordem_tipo'] = df_detalhe['tipo'].map({'Saída': 0, 'Entrada': 1})
             df_detalhe = df_detalhe.sort_values(by=['ordem_tipo', 'data_competencia'], ascending=[True, False])
             
-            # Cabeçalho customizado invertendo Tipo (coluna 1) e Data (coluna 2)
+            # Cabeçalho customizado
             header_cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2])
             header_cols[0].markdown("**Tipo**")
             header_cols[1].markdown("**Data**")
@@ -784,9 +793,9 @@ elif page == "Visão Consolidada":
             st.markdown("<hr style='margin:4px 0;border-color:#CBD5E1;'>", unsafe_allow_html=True)
 
             for _, row in df_detalhe.iterrows():
+                row_id = str(row['id'])
                 cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2])
                 
-                # Invertido: Coluna 0 = Tipo, Coluna 1 = Data
                 cols[0].markdown(f"<div class='drill-row'>{row['tipo']}</div>", unsafe_allow_html=True)
                 cols[1].markdown(f"<div class='drill-row'>{row['data_competencia'].strftime('%d/%m/%Y')}</div>", unsafe_allow_html=True)
                 cols[2].markdown(f"<div class='drill-row'>{row['descricao'] or '—'}</div>", unsafe_allow_html=True)
@@ -794,20 +803,61 @@ elif page == "Visão Consolidada":
                 cols[4].markdown(f"<div class='drill-row'>{fmt_moeda(row['valor'])}</div>", unsafe_allow_html=True)
                 cols[5].markdown(f"<div class='drill-row'>{row['conta_nome']}</div>", unsafe_allow_html=True)
                 
-                path_anexo = row.get('url_anexo')
-                if path_anexo and isinstance(path_anexo, str) and path_anexo.strip():
-                    try:
-                        link_anexo = supabase.storage.from_("comprovantes").create_signed_url(path_anexo, 3600)
-                        url_final = link_anexo.get("signedURL") or link_anexo.get("signed_url")
-                        if url_final:
-                            cols[6].markdown(f"<div class='drill-row'><a href='{url_final}' target='_blank'>📥 Baixar</a></div>", unsafe_allow_html=True)
-                        else:
-                            cols[6].markdown("<div class='drill-row'>—</div>", unsafe_allow_html=True)
-                    except Exception:
-                        cols[6].markdown("<div class='drill-row'>Indisponível</div>", unsafe_allow_html=True)
+                # Coleta anexos da tabela nova ou do legado
+                anexos_deste = mapa_anexos.get(row_id, [])
+                if not anexos_deste and row.get('url_anexo') and isinstance(row.get('url_anexo'), str) and row.get('url_anexo').strip():
+                    anexos_deste = [{
+                        'id': 'legacy',
+                        'url_storage': row.get('url_anexo'),
+                        'nome_original': row.get('url_anexo').split('/')[-1]
+                    }]
+
+                if len(anexos_deste) > 0:
+                    if cols[6].button(f"📎 {len(anexos_deste)} anexo(s)", key=f"btn_vis_anexos_{row_id}", help="Ver/Gerenciar anexos"):
+                        st.session_state[f"show_vis_anexo_{row_id}"] = not st.session_state.get(f"show_vis_anexo_{row_id}", False)
+                        st.rerun()
                 else:
                     cols[6].markdown("<div class='drill-row'>Sem anexo</div>", unsafe_allow_html=True)
-                    
+
+                # Painel expansível de gestão de anexos na Visão Consolidada
+                if st.session_state.get(f"show_vis_anexo_{row_id}", False):
+                    with st.container(border=True):
+                        st.markdown(f"**Gerenciar Anexos - {row['descricao']}**")
+                        for anexo in anexos_deste:
+                            col_g1, col_g2 = st.columns([3, 1])
+                            link_dl = obter_link_arquivo(anexo['url_storage'])
+                            nome_ex = anexo.get('nome_original') or anexo['url_storage'].split('/')[-1]
+                            
+                            if link_dl:
+                                col_g1.markdown(f"📄 [{nome_ex}]({link_dl})", unsafe_allow_html=True)
+                            else:
+                                col_g1.write(nome_ex)
+                                
+                            if anexo.get('id') == 'legacy':
+                                if col_g2.button("🗑️ Apagar", key=f"del_leg_vis_{row_id}"):
+                                    try:
+                                        supabase.storage.from_("comprovantes").remove([anexo['url_storage']])
+                                        sb_request("lancamentos", "PATCH", {"url_anexo": None}, filtros={"id": f"eq.{row_id}"})
+                                        st.cache_data.clear()
+                                        st.success("Anexo excluído!")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Erro: {e}")
+                            else:
+                                if col_g2.button("🗑️ Apagar", key=f"del_novo_vis_{anexo['id']}"):
+                                    try:
+                                        supabase.storage.from_("comprovantes").remove([anexo['url_storage']])
+                                        sb_request("lancamento_anexos", "DELETE", filtros={"id": f"eq.{anexo['id']}"})
+                                        st.cache_data.clear()
+                                        st.success("Anexo excluído!")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Erro: {e}")
+                                        
+                        if st.button("Fechar Gerenciador", key=f"close_vis_{row_id}"):
+                            st.session_state[f"show_vis_anexo_{row_id}"] = False
+                            st.rerun()
+                
                 st.markdown("<hr style='margin:2px 0;border-color:#F1F5F9;'>", unsafe_allow_html=True)
 
             st.markdown("")
@@ -821,7 +871,6 @@ elif page == "Visão Consolidada":
                 data=excel_detalhe,
                 file_name=f"Detalhes_{ano_sel}_{mes_drill}_{cat_drill}.xlsx".replace(" ", "_"),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-           
 # ==========================================
 # ==========================================
 # ==========================================
