@@ -1934,7 +1934,6 @@ elif page == "Painel de Eventos":
 
     col_novo, col_edit = st.columns(2)
     with col_novo:
-        with col_novo:
         with st.expander("➕ Criar Novo Evento", expanded=len(eventos_db) == 0):
             with st.form("form_evento", clear_on_submit=True):
                 nome_ev = st.text_input("Nome do Evento")
