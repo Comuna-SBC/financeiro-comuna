@@ -1660,29 +1660,33 @@ elif page == "Conciliação Bancária":
         tab_ofx, tab_manual = st.tabs(["⚡ Importação Inteligente (OFX)", "🖐️ Conciliação Manual"])
 
         with tab_ofx:
-            st.markdown("Faça o upload do arquivo **.OFX** gerado pelo seu banco. O sistema cruzará os dados, **extrairá o nome do remetente/beneficiário** dos textos do banco e identificará os centavos.")
-            arquivo_ofx = st.file_uploader("Selecione o arquivo OFX do banco", type=['ofx', 'txt'], key="up_ofx_novo")
+            st.markdown("Faça o upload do arquivo **.OFX** gerado pelo seu banco. O sistema cruzará os dados, **extrairá o nome do remetente/beneficiário** e detectará automaticamente os centavos dos eventos.")
+            arquivo_ofx = st.file_uploader("Selecione o arquivo OFX do banco", type=['ofx', 'txt'], key="up_ofx_novo_v3")
 
             if arquivo_ofx:
                 import re
                 content = arquivo_ofx.read().decode('latin1', errors='ignore')
                 transacoes = []
                 
-                for bloco in re.split(r'<STMTTRN>', content)[1:]:
-                    dt_match = re.search(r'<DTPOSTED>(\d{8})', bloco)
-                    valor_match = re.search(r'<TRNAMT>([-\d\.]+)', bloco)
-                    memo_match = re.search(r'<MEMO>(.*?)(?:<|$)', bloco)
-                    name_match = re.search(r'<NAME>(.*?)(?:<|$)', bloco)
+                # Leitura robusta insensível a maiúsculas/minúsculas nas tags OFX
+                for bloco in re.split(r'<\s*/?\s*STMTTRN\s*>', content, flags=re.IGNORECASE)[1:]:
+                    dt_match = re.search(r'<\s*DTPOSTED\s*>(\d{8})', bloco, flags=re.IGNORECASE)
+                    valor_match = re.search(r'<\s*TRNAMT\s*>([-\d\.]+)', bloco, flags=re.IGNORECASE)
+                    memo_match = re.search(r'<\s*MEMO\s*>(.*?)(?:<|$)', bloco, flags=re.IGNORECASE)
+                    name_match = re.search(r'<\s*NAME\s*>(.*?)(?:<|$)', bloco, flags=re.IGNORECASE)
 
                     if dt_match and valor_match:
-                        dt = pd.to_datetime(dt_match.group(1), format='%Y%m%d').date()
+                        dt_str = dt_match.group(1)[:8]
+                        try:
+                            dt = pd.to_datetime(dt_str, format='%Y%m%d').date()
+                        except:
+                            continue
+                        
                         valor = float(valor_match.group(1))
                         
-                        # Pega o memo ou o name do OFX
                         raw_desc = memo_match.group(1).strip() if memo_match else (name_match.group(1).strip() if name_match else "Extrato Bancário")
                         raw_desc = re.sub(r'<[^>]+>', '', raw_desc)
                         
-                        # Lógica para limpar e isolar o nome (Removendo ruídos comuns de Pix, TED, etc.)
                         desc_upper = raw_desc.upper()
                         nome_extraido = raw_desc
                         
@@ -1705,7 +1709,9 @@ elif page == "Conciliação Bancária":
 
                 df_ofx = pd.DataFrame(transacoes)
 
-                if not df_ofx.empty:
+                if df_ofx.empty:
+                    st.warning("⚠️ Não foi possível identificar transações válidas neste arquivo OFX. Verifique o formato.")
+                else:
                     used_ids = set()
                     for idx, row in df_ofx.iterrows():
                         if not df_conta.empty:
@@ -1731,7 +1737,7 @@ elif page == "Conciliação Bancária":
                         cats_saida = [c['nome'] for c in categorias_db if c['tipo'] == 'Saída']
                         
                         nomes_eventos = ["Nenhum"] + [e['nome'] for e in eventos_db]
-                        map_centavos_evento = {str(e.get('codigo_centavos')).strip(): e['nome'] for e in eventos_db if e.get('codigo_centavos')}
+                        map_centavos_evento = {str(e.get('codigo_centavos')).strip().zfill(2): e['nome'] for e in eventos_db if e.get('codigo_centavos')}
                         map_cat_id = {c['nome']: c['id'] for c in categorias_db}
                         map_evento_obj = {e['nome']: e for e in eventos_db}
                         
@@ -1744,12 +1750,11 @@ elif page == "Conciliação Bancária":
                         if not df_entradas.empty:
                             st.markdown("#### 🟢 Novas Entradas (Recebimentos)")
                             df_entradas.insert(0, 'Cadastrar', True)
-                            # Monta o texto inteligente baseando-se no nome isolado
                             df_entradas['Descrição para Sistema'] = "Extrato: " + df_entradas['Nome Identificado']
                             
                             projetos_sugeridos = []
                             for v in df_entradas['Valor']:
-                                centavos_str = f"{int(round((v % 1) * 100)):02d}"
+                                centavos_str = f"{v:.2f}".split('.')[-1]
                                 proj = map_centavos_evento.get(centavos_str, "Nenhum")
                                 projetos_sugeridos.append(proj)
                             df_entradas['Projeto'] = projetos_sugeridos
@@ -1761,8 +1766,8 @@ elif page == "Conciliação Bancária":
                                 df_entradas[['Cadastrar', 'Data', 'Descrição Bancária', 'Descrição para Sistema', 'Valor', 'Categoria', 'Projeto']],
                                 column_config={
                                     "Data": st.column_config.DateColumn(disabled=True, format="DD/MM/YYYY"),
-                                    "Descrição Bancária": st.column_config.TextColumn(disabled=True, help="Texto original do banco"),
-                                    "Descrição para Sistema": st.column_config.TextColumn(required=True, help="Nome limpo extraído automaticamente"),
+                                    "Descrição Bancária": st.column_config.TextColumn(disabled=True),
+                                    "Descrição para Sistema": st.column_config.TextColumn(required=True),
                                     "Valor": st.column_config.NumberColumn(disabled=True, format="R$ %.2f"),
                                     "Categoria": st.column_config.SelectboxColumn(options=cats_entrada, required=True),
                                     "Projeto": st.column_config.SelectboxColumn(options=nomes_eventos, help="Detectado automaticamente pelos centavos")
@@ -1846,7 +1851,7 @@ elif page == "Conciliação Bancária":
                                 st.warning("Marque pelo menos um item na coluna 'Cadastrar'.")
                             else:
                                 st.cache_data.clear()
-                                st.success(f"✅ {total_salvos} transações salvas com os nomes extraídos!")
+                                st.success(f"✅ {total_salvos} transações salvas e créditos direcionados para o bolsão!")
                                 time.sleep(1.5)
                                 st.rerun()
 
