@@ -1668,7 +1668,7 @@ elif page == "Conciliação Bancária":
                 content = arquivo_ofx.read().decode('latin1', errors='ignore')
                 transacoes = []
                 
-                for bloco in re.split(r'<STMTTRN>', content)[1:]:
+                for bloco in re.split(r'<\s*STMTTRN\s*>', content, flags=re.IGNORECASE)[1:]:
                     dt_match = re.search(r'<DTPOSTED>(\d{8})', bloco)
                     valor_match = re.search(r'<TRNAMT>([-\d\.]+)', bloco)
                     memo_match = re.search(r'<MEMO>(.*?)(?:<|$)', bloco)
