@@ -1660,8 +1660,8 @@ elif page == "Conciliação Bancária":
         tab_ofx, tab_manual = st.tabs(["⚡ Importação Inteligente (OFX)", "🖐️ Conciliação Manual"])
 
         with tab_ofx:
-            st.markdown("Faça o upload do arquivo **.OFX** gerado pelo seu banco. O sistema cruzará os dados com os lançamentos existentes, listando **Entradas** e **Saídas** novas para você categorizar e salvar em lote.")
-            arquivo_ofx = st.file_uploader("Selecione o arquivo OFX do banco", type=['ofx', 'txt'])
+            st.markdown("Faça o upload do arquivo **.OFX** gerado pelo seu banco. O sistema cruzará os dados e **identificará automaticamente os centavos** cadastrados nos eventos.")
+            arquivo_ofx = st.file_uploader("Selecione o arquivo OFX do banco", type=['ofx', 'txt'], key="up_ofx_novo")
 
             if arquivo_ofx:
                 import re
@@ -1708,12 +1708,15 @@ elif page == "Conciliação Bancária":
                     if df_novos.empty:
                         st.success("🎉 Todas as transações deste extrato já constam e batem com o sistema!")
                     else:
-                        st.info(f"Encontramos **{len(df_novos)} transações** no extrato que ainda não constam no sistema.")
+                        st.info(f"Encontramos **{len(df_novos)} transações** novas no extrato.")
                         
                         cats_entrada = [c['nome'] for c in categorias_db if c['tipo'] == 'Entrada']
                         cats_saida = [c['nome'] for c in categorias_db if c['tipo'] == 'Saída']
+                        
                         nomes_eventos = ["Nenhum"] + [e['nome'] for e in eventos_db]
+                        map_centavos_evento = {str(e.get('codigo_centavos')).strip(): e['nome'] for e in eventos_db if e.get('codigo_centavos')}
                         map_cat_id = {c['nome']: c['id'] for c in categorias_db}
+                        map_evento_obj = {e['nome']: e for e in eventos_db}
                         
                         df_entradas = df_novos[df_novos['Tipo'] == 'Entrada'].copy()
                         df_saidas = df_novos[df_novos['Tipo'] == 'Saída'].copy()
@@ -1723,10 +1726,19 @@ elif page == "Conciliação Bancária":
 
                         if not df_entradas.empty:
                             st.markdown("#### 🟢 Novas Entradas (Recebimentos)")
-                            df_entradas.insert(0, 'Cadastrar', False)
+                            df_entradas.insert(0, 'Cadastrar', True)
                             df_entradas['Descrição para Sistema'] = "Extrato: " + df_entradas['Descrição Bancária']
-                            df_entradas['Categoria'] = cats_entrada[0] if cats_entrada else ""
-                            df_entradas['Projeto'] = "Nenhum"
+                            
+                            # Detecção automática de projeto por centavos
+                            projetos_sugeridos = []
+                            for v in df_entradas['Valor']:
+                                centavos_str = f"{int(round((v % 1) * 100)):02d}"
+                                proj = map_centavos_evento.get(centavos_str, "Nenhum")
+                                projetos_sugeridos.append(proj)
+                            df_entradas['Projeto'] = projetos_sugeridos
+                            
+                            cat_padrao_ent = "Inscrições de Eventos" if "Inscrições de Eventos" in cats_entrada else (cats_entrada[0] if cats_entrada else "")
+                            df_entradas['Categoria'] = cat_padrao_ent
                             
                             df_entradas_final = st.data_editor(
                                 df_entradas[['Cadastrar', 'Data', 'Descrição Bancária', 'Descrição para Sistema', 'Valor', 'Categoria', 'Projeto']],
@@ -1736,14 +1748,14 @@ elif page == "Conciliação Bancária":
                                     "Descrição para Sistema": st.column_config.TextColumn(required=True),
                                     "Valor": st.column_config.NumberColumn(disabled=True, format="R$ %.2f"),
                                     "Categoria": st.column_config.SelectboxColumn(options=cats_entrada, required=True),
-                                    "Projeto": st.column_config.SelectboxColumn(options=nomes_eventos)
+                                    "Projeto": st.column_config.SelectboxColumn(options=nomes_eventos, help="Detectado automaticamente pelos centavos")
                                 },
                                 hide_index=True, use_container_width=True, key="ed_entradas_ofx"
                             )
 
                         if not df_saidas.empty:
                             st.markdown("#### 🔴 Novas Saídas (Pagamentos)")
-                            df_saidas.insert(0, 'Cadastrar', False)
+                            df_saidas.insert(0, 'Cadastrar', True)
                             df_saidas['Descrição para Sistema'] = "Extrato: " + df_saidas['Descrição Bancária']
                             df_saidas['Categoria'] = cats_saida[0] if cats_saida else ""
                             df_saidas['Projeto'] = "Nenhum"
@@ -1761,14 +1773,16 @@ elif page == "Conciliação Bancária":
                                 hide_index=True, use_container_width=True, key="ed_saidas_ofx"
                             )
 
-                        if st.button("💾 Salvar Marcados no Sistema", type="primary"):
-                            payload_inserir = []
+                        if st.button("💾 Salvar Marcados no Sistema e Alimentar Bolsão", type="primary"):
+                            total_salvos = 0
                             
                             if not df_entradas_final.empty:
                                 para_salvar_ent = df_entradas_final[df_entradas_final['Cadastrar'] == True]
                                 for _, row in para_salvar_ent.iterrows():
                                     cc = None if row['Projeto'] == "Nenhum" else row['Projeto']
-                                    payload_inserir.append({
+                                    
+                                    # 1. Cria o lançamento no caixa geral
+                                    res_l = sb_request("lancamentos", "POST", [{
                                         "descricao": row['Descrição para Sistema'],
                                         "tipo": "Entrada",
                                         "valor": float(row['Valor']),
@@ -1779,13 +1793,29 @@ elif page == "Conciliação Bancária":
                                         "conta_bancaria_id": conta_id,
                                         "centro_custo": cc,
                                         "conciliado": True
-                                    })
+                                    }])
                                     
+                                    if res_l and isinstance(res_l, list) and len(res_l) > 0:
+                                        lanc_id = res_l[0]['id']
+                                        total_salvos += 1
+                                        
+                                        # 2. Se for um evento, gera um crédito pendente no bolsão do líder
+                                        if cc and cc in map_evento_obj:
+                                            ev_obj = map_evento_obj[cc]
+                                            sb_request("creditos_ofx", "POST", {
+                                                "evento_id": ev_obj['id'],
+                                                "data": str(row['Data']),
+                                                "valor": float(row['Valor']),
+                                                "descricao_bancaria": row['Descrição Bancária'],
+                                                "status": "Disponível",
+                                                "lancamento_id": lanc_id
+                                            })
+
                             if not df_saidas_final.empty:
                                 para_salvar_sai = df_saidas_final[df_saidas_final['Cadastrar'] == True]
                                 for _, row in para_salvar_sai.iterrows():
                                     cc = None if row['Projeto'] == "Nenhum" else row['Projeto']
-                                    payload_inserir.append({
+                                    sb_request("lancamentos", "POST", [{
                                         "descricao": row['Descrição para Sistema'],
                                         "tipo": "Saída",
                                         "valor": float(row['Valor']),
@@ -1796,25 +1826,16 @@ elif page == "Conciliação Bancária":
                                         "conta_bancaria_id": conta_id,
                                         "centro_custo": cc,
                                         "conciliado": True
-                                    })
-                                    
-                            if not payload_inserir:
-                                st.warning("Marque pelo menos um item na coluna 'Cadastrar' antes de salvar.")
-                            else:
-                                with st.spinner(f"Registrando {len(payload_inserir)} lançamentos..."):
-                                    res = sb_request("lancamentos", "POST", payload_inserir)
-                                    if res is not None:
-                                        st.cache_data.clear()
-                                        st.success(f"{len(payload_inserir)} lançamentos registrados com sucesso!")
-                                        time.sleep(1.5)
-                                        st.rerun()
+                                    }])
+                                    total_salvos += 1
 
-                    with st.expander("Ver itens cruzados automaticamente (que já estão no sistema)"):
-                        df_ja_registrado = df_ofx[df_ofx['Status'] == 'Já no sistema']
-                        if not df_ja_registrado.empty:
-                            st.dataframe(df_ja_registrado[['Data', 'Descrição Bancária', 'Valor', 'Tipo']], use_container_width=True, hide_index=True)
-                        else:
-                            st.write("Nenhum cruzamento encontrado neste arquivo.")
+                            if total_salvos == 0:
+                                st.warning("Marque pelo menos um item na coluna 'Cadastrar'.")
+                            else:
+                                st.cache_data.clear()
+                                st.success(f"✅ {total_salvos} transações salvas e créditos direcionados para as lideranças!")
+                                time.sleep(1.5)
+                                st.rerun()
 
         with tab_manual:
             st.subheader("Lista de Lançamentos da Conta")
@@ -2072,29 +2093,95 @@ elif page == "Painel de Eventos":
             st.markdown("---")
 
 # ==========================================
-# INSCRIÇÕES E COMPROVANTES
+# ==========================================
+# INSCRIÇÕES E COMPROVANTES (COM BOLSÃO DE CRÉDITOS OFX)
 # ==========================================
 elif page == "Inscrições e Comprovantes":
-    st.title("Inscrições e Comprovantes")
-    st.markdown("Valide os comprovantes de Pix enviados pelos participantes, parcela por parcela.")
+    st.title("Inscrições, Comprovantes e Bolsão OFX")
+    st.markdown("Valide comprovantes de Pix ou distribua os depósitos bancários identificados por centavos.")
 
     if not eventos_db:
         st.info("Cadastre um evento primeiro em 'Painel de Eventos'.")
     else:
-        evento_opcoes = {e["nome"]: e["id"] for e in eventos_db}
-        evento_sel = st.selectbox("Evento", list(evento_opcoes.keys()))
+        # Se for líder de evento logado, filtra apenas os eventos dele (se aplicável)
+        usuario_atual = st.session_state.get("usuario_logado", {})
+        if usuario_atual.get("perfil") == "Visão Eventos":
+            eventos_visiveis = [e for e in eventos_db if str(e.get("lider_id")) == str(usuario_atual.get("id"))]
+            if not eventos_visiveis:
+                st.warning("Você não está associado a nenhum evento no momento.")
+                st.stop()
+        else:
+            eventos_visiveis = eventos_db
+
+        evento_opcoes = {e["nome"]: e["id"] for e in eventos_visiveis}
+        evento_sel = st.selectbox("Selecione o Evento", list(evento_opcoes.keys()))
         evento_id_sel = evento_opcoes[evento_sel]
 
-        inscricoes_evento = [i for i in carregar("inscricoes") if i.get('evento_id') == evento_id_sel]
+        inscricoes_evento = [i for i in carregar("inscricoes") if str(i.get('evento_id')) == str(evento_id_sel)]
         pagamentos_all = carregar("inscricao_pagamentos")
+        creditos_ofx_all = sb_request("creditos_ofx", "GET", filtros={"evento_id": f"eq.{evento_id_sel}"}) or []
+        
         map_insc = {i["id"]: i for i in inscricoes_evento}
 
-        filtro = st.radio("Mostrar", ["Comprovantes pendentes", "Todas as inscrições"], horizontal=True)
+        tab_bolsao, tab_comprovantes, tab_lista = st.tabs(["💵 Bolsão de Créditos OFX", "⏳ Comprovantes Web", "👥 Participantes"])
 
-        if filtro == "Comprovantes pendentes":
+        with tab_bolsao:
+            st.markdown("### Créditos do Extrato Bancário Aguardando Vínculo")
+            st.markdown("Estes valores entraram na conta da igreja com o código de centavos deste evento. Clique em **Vincular** para abater na inscrição de um participante.")
+            
+            creditos_disponiveis = [c for c in creditos_ofx_all if c.get("status") == "Disponível"]
+            
+            if not creditos_disponiveis:
+                st.success("Nenhum crédito bancário pendente de distribuição para este evento. 👍")
+            else:
+                for cred in creditos_disponiveis:
+                    c_b1, c_b2, c_b3 = st.columns([2, 2, 2])
+                    c_b1.write(f"📅 **{pd.to_datetime(cred['data']).strftime('%d/%m/%Y')}** — {fmt_moeda(cred['valor'])}")
+                    c_b2.caption(f"Banco: {cred['descricao_bancaria']}")
+                    
+                    with c_b3:
+                        with st.popover("🔗 Vincular a Participante"):
+                            if not inscricoes_evento:
+                                st.warning("Nenhum participante inscrito ainda. Cadastre na aba 'Participantes'.")
+                            else:
+                                participante_opcoes = {i['nome_participante']: i['id'] for i in inscricoes_evento}
+                                part_sel = st.selectbox("Escolha o Participante", list(participante_opcoes.keys()), key=f"sel_part_{cred['id']}")
+                                
+                                if st.button("Confirmar Vínculo", key=f"btn_vinc_cred_{cred['id']}", type="primary"):
+                                    insc_id = participante_opcoes[part_sel]
+                                    insc_obj = map_insc[insc_id]
+                                    
+                                    # 1. Registra o pagamento na inscrição
+                                    cat_evento_id = next((c['id'] for c in categorias_db if c['nome'] == 'Inscrições de Eventos'), None)
+                                    novo_pag = sb_request("inscricao_pagamentos", "POST", {
+                                        "inscricao_id": insc_id,
+                                        "numero_parcela": len([p for p in pagamentos_all if p.get("inscricao_id") == insc_id]) + 1,
+                                        "valor": float(cred['valor']),
+                                        "comprovante_url": None,
+                                        "status": "Aprovado",
+                                        "lancamento_id": cred.get('lancamento_id')
+                                    })
+                                    
+                                    if novo_pag is not None:
+                                        # 2. Atualiza status do crédito OFX para Vinculado
+                                        sb_request("creditos_ofx", "PATCH", {"status": "Vinculado", "inscricao_id": insc_id}, filtros={"id": f"eq.{cred['id']}"})
+                                        
+                                        # 3. Atualiza o total pago do participante
+                                        novo_valor_pago = float(insc_obj.get('valor_pago') or 0) + float(cred['valor'])
+                                        novo_status_p = "Completo" if novo_valor_pago >= float(insc_obj.get('valor_total') or 0) - 0.01 else "Parcial"
+                                        sb_request("inscricoes", "PATCH", {"valor_pago": novo_valor_pago, "status_pagamento": novo_status_p}, filtros={"id": f"eq.{insc_id}"})
+                                        
+                                        st.cache_data.clear()
+                                        st.success("Crédito vinculado com sucesso!")
+                                        time.sleep(1)
+                                        st.rerun()
+                    st.markdown("<hr style='margin:4px 0;border-color:#E2E8F0;'>", unsafe_allow_html=True)
+
+        with tab_comprovantes:
+            st.markdown("### Comprovantes enviados pelo Link Web")
             pendentes_pg = [p for p in pagamentos_all if p.get("status") == "Pendente" and p.get("inscricao_id") in map_insc]
             if not pendentes_pg:
-                st.success("Nenhum comprovante pendente para este evento.")
+                st.success("Nenhum comprovante pendente via web.")
             else:
                 for p in pendentes_pg:
                     insc = map_insc[p["inscricao_id"]]
@@ -2107,12 +2194,12 @@ elif page == "Inscrições e Comprovantes":
                     col_a, col_b = c4.columns(2)
                     if col_a.button("✅", key=f"aprovar_pg_{p['id']}", help="Aprovar"):
                         cat_evento_id = next((c['id'] for c in categorias_db if c['nome'] == 'Inscrições de Eventos'), None)
-                        novo_lanc = sb_request("lancamentos", "POST", {
+                        novo_lanc = sb_request("lancamentos", "POST", [{
                             "descricao": f"Inscrição ({insc['nome_participante']} - parcela {p.get('numero_parcela',1)}) - {evento_sel}",
                             "tipo": "Entrada", "valor": float(p.get('valor') or 0),
                             "data_competencia": str(date.today()), "status": "Concluído",
                             "categoria_id": cat_evento_id, "centro_custo": evento_sel
-                        })
+                        }])
                         
                         if novo_lanc is not None:
                             lanc_id = novo_lanc[0]['id'] if isinstance(novo_lanc, list) and len(novo_lanc)>0 else None
@@ -2120,25 +2207,47 @@ elif page == "Inscrições e Comprovantes":
                             novo_valor_pago = float(insc.get('valor_pago') or 0) + float(p.get('valor') or 0)
                             novo_status = "Completo" if novo_valor_pago >= float(insc.get('valor_total') or 0) - 0.01 else "Parcial"
                             sb_request("inscricoes", "PATCH", {"valor_pago": novo_valor_pago, "status_pagamento": novo_status}, filtros={"id": f"eq.{insc['id']}"})
-                            st.cache_data.clear()
-                            st.rerun()
+                            st.cache_data.clear(); st.rerun()
 
                     if col_b.button("❌", key=f"rejeitar_pg_{p['id']}", help="Rejeitar"):
-                        res = sb_request("inscricao_pagamentos", "PATCH", {"status": "Rejeitado"}, filtros={"id": f"eq.{p['id']}"})
-                        if res is not None:
-                            st.cache_data.clear()
-                            st.rerun()
+                        sb_request("inscricao_pagamentos", "PATCH", {"status": "Rejeitado"}, filtros={"id": f"eq.{p['id']}"})
+                        st.cache_data.clear(); st.rerun()
                     st.markdown("<hr style='margin:6px 0;border-color:#E2E8F0;'>", unsafe_allow_html=True)
-        else:
+
+        with tab_lista:
+            st.markdown("### Participantes Inscritos")
+            with st.expander("➕ Cadastrar Participante Manualmente"):
+                with st.form("form_cad_participante"):
+                    p_nome = st.text_input("Nome Completo")
+                    p_tel = st.text_input("Telefone / WhatsApp")
+                    p_cpf = st.text_input("CPF (Opcional)")
+                    evento_obj_sel = next(e for e in eventos_db if str(e['id']) == str(evento_id_sel))
+                    p_valor = st.number_input("Valor da Inscrição (R$)", value=float(evento_obj_sel.get('valor_inscricao') or 0), format="%.2f")
+                    
+                    if st.form_submit_button("Cadastrar Inscrição", use_container_width=True):
+                        if not p_nome:
+                            st.warning("Informe o nome do participante.")
+                        else:
+                            sb_request("inscricoes", "POST", [{
+                                "evento_id": evento_id_sel,
+                                "nome_participante": p_nome,
+                                "contato": p_tel,
+                                "cpf": p_cpf if p_cpf else None,
+                                "valor_total": float(p_valor),
+                                "valor_pago": 0,
+                                "status_pagamento": "Pendente"
+                            }])
+                            st.cache_data.clear(); st.success("Inscrição cadastrada!"); time.sleep(1); st.rerun()
+
             if not inscricoes_evento:
-                st.info("Nenhuma inscrição para este evento.")
+                st.info("Nenhuma inscrição cadastrada para este evento.")
             else:
                 for insc in inscricoes_evento:
                     pgs = [p for p in pagamentos_all if p.get("inscricao_id") == insc["id"]]
                     emoji_status = {"Pendente": "⏳", "Parcial": "🟡", "Completo": "✅"}.get(insc.get("status_pagamento"), "⏳")
-                    st.markdown(f"**{insc['nome_participante']}** (CPF {insc.get('cpf','—')}) — {emoji_status} {insc.get('status_pagamento','Pendente')} — {fmt_moeda(insc.get('valor_pago'))} / {fmt_moeda(insc.get('valor_total'))}")
+                    st.markdown(f"**{insc['nome_participante']}** ({insc.get('contato','—')}) — {emoji_status} {insc.get('status_pagamento','Pendente')} — Pago: {fmt_moeda(insc.get('valor_pago'))} / Total: {fmt_moeda(insc.get('valor_total'))}")
                     for p in sorted(pgs, key=lambda x: x.get("numero_parcela", 1)):
-                        st.caption(f" Parcela {p.get('numero_parcela',1)}: {fmt_moeda(p.get('valor'))} — {p['status']}")
+                        st.caption(f" • Parcela {p.get('numero_parcela',1)}: {fmt_moeda(p.get('valor'))} — {p['status']}")
                     st.markdown("<hr style='margin:6px 0;border-color:#E2E8F0;'>", unsafe_allow_html=True)
 
 # ==========================================
