@@ -1660,7 +1660,7 @@ elif page == "Conciliação Bancária":
         tab_ofx, tab_manual = st.tabs(["⚡ Importação Inteligente (OFX)", "🖐️ Conciliação Manual"])
 
         with tab_ofx:
-            st.markdown("Faça o upload do arquivo **.OFX** gerado pelo seu banco. O sistema cruzará os dados e **identificará automaticamente os centavos** cadastrados nos eventos.")
+            st.markdown("Faça o upload do arquivo **.OFX** gerado pelo seu banco. O sistema cruzará os dados, **extrairá o nome do remetente/beneficiário** dos textos do banco e identificará os centavos.")
             arquivo_ofx = st.file_uploader("Selecione o arquivo OFX do banco", type=['ofx', 'txt'], key="up_ofx_novo")
 
             if arquivo_ofx:
@@ -1671,17 +1671,34 @@ elif page == "Conciliação Bancária":
                 for bloco in re.split(r'<STMTTRN>', content)[1:]:
                     dt_match = re.search(r'<DTPOSTED>(\d{8})', bloco)
                     valor_match = re.search(r'<TRNAMT>([-\d\.]+)', bloco)
-                    desc_match = re.search(r'<MEMO>(.*?)(?:<|$)', bloco)
+                    memo_match = re.search(r'<MEMO>(.*?)(?:<|$)', bloco)
+                    name_match = re.search(r'<NAME>(.*?)(?:<|$)', bloco)
 
                     if dt_match and valor_match:
                         dt = pd.to_datetime(dt_match.group(1), format='%Y%m%d').date()
                         valor = float(valor_match.group(1))
-                        desc = desc_match.group(1).strip() if desc_match else "Extrato Bancário"
-                        desc = re.sub(r'<[^>]+>', '', desc)
+                        
+                        # Pega o memo ou o name do OFX
+                        raw_desc = memo_match.group(1).strip() if memo_match else (name_match.group(1).strip() if name_match else "Extrato Bancário")
+                        raw_desc = re.sub(r'<[^>]+>', '', raw_desc)
+                        
+                        # Lógica para limpar e isolar o nome (Removendo ruídos comuns de Pix, TED, etc.)
+                        desc_upper = raw_desc.upper()
+                        nome_extraido = raw_desc
+                        
+                        for prefixo in ["PIX - RECEBIMENTO:", "PIX -", "PIX TRANSF", "PIX RECEBIDO", "TED -", "DOC -", "TRANSF. COPIE E COLE", "TRANSFERENCIA"]:
+                            if desc_upper.startswith(prefixo):
+                                nome_extraido = raw_desc[len(prefixo):].strip(" -/")
+                                break
+                        
+                        if not nome_extraido:
+                            nome_extraido = raw_desc
+
                         transacoes.append({
                             "Data": dt,
                             "Valor": abs(valor),
-                            "Descrição Bancária": desc[:80],
+                            "Descrição Bancária": raw_desc[:80],
+                            "Nome Identificado": nome_extraido.title() if len(nome_extraido) > 2 else raw_desc,
                             "Tipo": "Entrada" if valor >= 0 else "Saída",
                             "Status": "Não registrado"
                         })
@@ -1727,9 +1744,9 @@ elif page == "Conciliação Bancária":
                         if not df_entradas.empty:
                             st.markdown("#### 🟢 Novas Entradas (Recebimentos)")
                             df_entradas.insert(0, 'Cadastrar', True)
-                            df_entradas['Descrição para Sistema'] = "Extrato: " + df_entradas['Descrição Bancária']
+                            # Monta o texto inteligente baseando-se no nome isolado
+                            df_entradas['Descrição para Sistema'] = "Extrato: " + df_entradas['Nome Identificado']
                             
-                            # Detecção automática de projeto por centavos
                             projetos_sugeridos = []
                             for v in df_entradas['Valor']:
                                 centavos_str = f"{int(round((v % 1) * 100)):02d}"
@@ -1744,8 +1761,8 @@ elif page == "Conciliação Bancária":
                                 df_entradas[['Cadastrar', 'Data', 'Descrição Bancária', 'Descrição para Sistema', 'Valor', 'Categoria', 'Projeto']],
                                 column_config={
                                     "Data": st.column_config.DateColumn(disabled=True, format="DD/MM/YYYY"),
-                                    "Descrição Bancária": st.column_config.TextColumn(disabled=True),
-                                    "Descrição para Sistema": st.column_config.TextColumn(required=True),
+                                    "Descrição Bancária": st.column_config.TextColumn(disabled=True, help="Texto original do banco"),
+                                    "Descrição para Sistema": st.column_config.TextColumn(required=True, help="Nome limpo extraído automaticamente"),
                                     "Valor": st.column_config.NumberColumn(disabled=True, format="R$ %.2f"),
                                     "Categoria": st.column_config.SelectboxColumn(options=cats_entrada, required=True),
                                     "Projeto": st.column_config.SelectboxColumn(options=nomes_eventos, help="Detectado automaticamente pelos centavos")
@@ -1756,7 +1773,7 @@ elif page == "Conciliação Bancária":
                         if not df_saidas.empty:
                             st.markdown("#### 🔴 Novas Saídas (Pagamentos)")
                             df_saidas.insert(0, 'Cadastrar', True)
-                            df_saidas['Descrição para Sistema'] = "Extrato: " + df_saidas['Descrição Bancária']
+                            df_saidas['Descrição para Sistema'] = "Extrato: " + df_saidas['Nome Identificado']
                             df_saidas['Categoria'] = cats_saida[0] if cats_saida else ""
                             df_saidas['Projeto'] = "Nenhum"
                             
@@ -1780,8 +1797,6 @@ elif page == "Conciliação Bancária":
                                 para_salvar_ent = df_entradas_final[df_entradas_final['Cadastrar'] == True]
                                 for _, row in para_salvar_ent.iterrows():
                                     cc = None if row['Projeto'] == "Nenhum" else row['Projeto']
-                                    
-                                    # 1. Cria o lançamento no caixa geral
                                     res_l = sb_request("lancamentos", "POST", [{
                                         "descricao": row['Descrição para Sistema'],
                                         "tipo": "Entrada",
@@ -1798,8 +1813,6 @@ elif page == "Conciliação Bancária":
                                     if res_l and isinstance(res_l, list) and len(res_l) > 0:
                                         lanc_id = res_l[0]['id']
                                         total_salvos += 1
-                                        
-                                        # 2. Se for um evento, gera um crédito pendente no bolsão do líder
                                         if cc and cc in map_evento_obj:
                                             ev_obj = map_evento_obj[cc]
                                             sb_request("creditos_ofx", "POST", {
@@ -1833,7 +1846,7 @@ elif page == "Conciliação Bancária":
                                 st.warning("Marque pelo menos um item na coluna 'Cadastrar'.")
                             else:
                                 st.cache_data.clear()
-                                st.success(f"✅ {total_salvos} transações salvas e créditos direcionados para as lideranças!")
+                                st.success(f"✅ {total_salvos} transações salvas com os nomes extraídos!")
                                 time.sleep(1.5)
                                 st.rerun()
 
