@@ -2093,21 +2093,32 @@ elif page == "Painel de Eventos":
             """, unsafe_allow_html=True)
 
             app_url = st.secrets.get("APP_URL", "").rstrip("/")
-            complemento_link = f"?pagina=inscricao&evento={ev['id']}"
-            link_publico = f"{app_url}/{complemento_link}" if app_url else complemento_link
+        
+        # Proteção caso o APP_URL nos Secrets tenha sido salvo com colchetes por engano
+        if "[" in app_url and "](" in app_url:
+            import re
+            match = re.search(r'\((https?://[^)]+)\)', app_url)
+            app_url = match.group(1) if match else "https://financeiro-comuna-sbc.streamlit.app"
+        elif not app_url:
+            app_url = "https://financeiro-comuna-sbc.streamlit.app"
 
-            col_link, col_acao = st.columns([3, 1])
-            with col_link:
-                st.text_input("Link público para inscrição", value=link_publico, key=f"link_evento_{ev['id']}", disabled=True)
-            with col_acao:
-                novo_status = "Encerrado" if status_evento == "Aberto" else "Aberto"
-                texto_botao = "🔒 Encerrar inscrições" if status_evento == "Aberto" else "🔓 Reabrir inscrições"
-                if st.button(texto_botao, key=f"alterar_status_evento_{ev['id']}", use_container_width=True):
-                    resultado = sb_request("eventos", "PATCH", {"status": novo_status}, filtros={"id": f"eq.{ev['id']}"})
-                    if resultado is not None:
-                        st.cache_data.clear()
-                        st.rerun()
-            st.markdown("---")
+        complemento_link = f"?pagina=inscricao&evento={ev['id']}"
+        link_publico = f"{app_url}/{complemento_link}"
+
+        col_link, col_acao = st.columns([3, 1])
+        with col_link:
+            st.text_input("Link público para inscrição", value=link_publico, key=f"link_evento_{ev['id']}", disabled=True)
+            st.markdown(f"🔗 [Testar página de inscrição deste evento]({link_publico})", unsafe_allow_html=True)
+            
+        with col_acao:
+            novo_status = "Encerrado" if status_evento == "Aberto" else "Aberto"
+            texto_botao = "🔒 Encerrar inscrições" if status_evento == "Aberto" else "🔓 Reabrir inscrições"
+            if st.button(texto_botao, key=f"alterar_status_evento_{ev['id']}", use_container_width=True):
+                resultado = sb_request("eventos", "PATCH", {"status": novo_status}, filtros={"id": f"eq.{ev['id']}"})
+                if resultado is not None:
+                    st.cache_data.clear()
+                    st.rerun()
+        st.markdown("---")
 
 # ==========================================
 # ==========================================
