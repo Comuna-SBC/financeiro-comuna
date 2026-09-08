@@ -1661,19 +1661,18 @@ elif page == "Conciliação Bancária":
 
         with tab_ofx:
             st.markdown("Faça o upload do arquivo **.OFX** gerado pelo seu banco. O sistema cruzará os dados, **extrairá o nome do remetente/beneficiário** e detectará automaticamente os centavos dos eventos.")
-            arquivo_ofx = st.file_uploader("Selecione o arquivo OFX do banco", type=['ofx', 'txt'], key="up_ofx_novo_v3")
+            arquivo_ofx = st.file_uploader("Selecione o arquivo OFX do banco", type=['ofx', 'txt'], key="up_ofx_novo_v4")
 
             if arquivo_ofx:
                 import re
                 content = arquivo_ofx.read().decode('latin1', errors='ignore')
                 transacoes = []
                 
-                # Leitura robusta insensível a maiúsculas/minúsculas nas tags OFX
-                for bloco in re.split(r'<\s*/?\s*STMTTRN\s*>', content, flags=re.IGNORECASE)[1:]:
-                    dt_match = re.search(r'<\s*DTPOSTED\s*>(\d{8})', bloco, flags=re.IGNORECASE)
-                    valor_match = re.search(r'<\s*TRNAMT\s*>([-\d\.]+)', bloco, flags=re.IGNORECASE)
-                    memo_match = re.search(r'<\s*MEMO\s*>(.*?)(?:<|$)', bloco, flags=re.IGNORECASE)
-                    name_match = re.search(r'<\s*NAME\s*>(.*?)(?:<|$)', bloco, flags=re.IGNORECASE)
+                for bloco in re.split(r'<STMTTRN>', content)[1:]:
+                    dt_match = re.search(r'<DTPOSTED>(\d{8})', bloco)
+                    valor_match = re.search(r'<TRNAMT>([-\d\.]+)', bloco)
+                    memo_match = re.search(r'<MEMO>(.*?)(?:<|$)', bloco)
+                    name_match = re.search(r'<NAME>(.*?)(?:<|$)', bloco)
 
                     if dt_match and valor_match:
                         dt_str = dt_match.group(1)[:8]
