@@ -9,6 +9,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import requests
 import re
+import zipfile
 
 # ==========================================
 # CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM
@@ -73,6 +74,17 @@ st.markdown("""
         background-color: #1D4ED8 !important;
     }
     h1, h2, h3, h4 { color: #0F172A !important; font-weight: 700 !important; }
+    
+    .badge-falta-anexo {
+        background-color: #FEF2F2;
+        color: #DC2626;
+        border: 1px solid #FCA5A5;
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        display: inline-block;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -89,7 +101,6 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def sb_request(tabela, metodo="GET", payload=None, filtros=None):
-    """Realiza a requisição e IMPRIME O ERRO se falhar."""
     headers = {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -120,7 +131,6 @@ def sb_request(tabela, metodo="GET", payload=None, filtros=None):
         return [] if metodo == "GET" else None
 
 def to_excel_bytes(dfs_dict):
-    """Recebe um dicionário de {NomeDaAba: DataFrame} e retorna bytes de um arquivo Excel"""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         for sheet_name, df_data in dfs_dict.items():
@@ -131,18 +141,13 @@ def to_excel_bytes(dfs_dict):
 def carregar(tabela):
     return sb_request(tabela, "GET") or []
 
-
-
 def limpar_nome_arquivo(texto):
-    """Remove caracteres especiais e substitui espaços por underscores para padronizar o nome do arquivo."""
     if not texto:
         return "geral"
-    # Remove acentos e caracteres não alfanuméricos comuns
     texto_limpo = re.sub(r'[^a-zA-Z0-9]', '_', texto)
     return re.sub(r'_+', '_', texto_limpo).strip('_')
 
 def processar_e_salvar_anexos(arquivos_upload, lancamento_id, data_lanc, categoria_nome, descricao):
-    """Processa múltiplos arquivos, renomeia com o padrão YYYYMMDD.categoria.descricao.## e salva no Storage e na tabela."""
     if not arquivos_upload:
         return
     
@@ -152,11 +157,10 @@ def processar_e_salvar_anexos(arquivos_upload, lancamento_id, data_lanc, categor
     
     for idx, arquivo in enumerate(arquivos_upload, start=1):
         extensao = arquivo.name.split('.')[-1].lower()
-        nome_padronizado = f"notas/{data_str}.{cat_limpa}.{desc_limpa}.{idx:02d}.{extensao}"
+        nome_padronizado = f"notas/{data_str}.{cat_limpa}.{desc_limpa}.{int(time.time())}.{idx:02d}.{extensao}"
         bytes_data = arquivo.getvalue()
         
         try:
-            # Otimização se for imagem
             if extensao in ['jpg', 'jpeg', 'png']:
                 img = Image.open(io.BytesIO(bytes_data))
                 if img.mode != 'RGB':
@@ -170,14 +174,12 @@ def processar_e_salvar_anexos(arquivos_upload, lancamento_id, data_lanc, categor
             else:
                 content_type = "application/pdf"
             
-            # Upload para o Storage do Supabase com o nome padronizado
             supabase.storage.from_("comprovantes").upload(
                 nome_padronizado, bytes_data, 
                 file_options={"content-type": content_type, "upsert": "true"}
             )
             
-            # Registra na tabela complementar garantindo que o nome gravado seja o padronizado
-            nome_limpo_arquivo = nome_padronizado.split('/')[-1]
+            nome_limpo_arquivo = arquivo.name
             sb_request("lancamento_anexos", "POST", {
                 "lancamento_id": lancamento_id,
                 "url_storage": nome_padronizado,
@@ -213,7 +215,6 @@ def carregar_lancamentos_df():
         return pd.DataFrame()
     df = pd.DataFrame(lanc)
     
-    # Prevenção caso a tabela exista mas esteja vazia e falte colunas
     for col in ['valor', 'data_competencia', 'status', 'categoria_id', 'conta_bancaria_id', 'centro_custo', 'descricao', 'tipo']:
         if col not in df.columns:
             df[col] = None
@@ -247,12 +248,6 @@ def fmt_moeda(v):
 @st.cache_data(ttl=15)
 def carregar_usuarios():
     return sb_request("usuarios", "GET") or []
-
-def safe_map_moeda(df):
-    try:
-        return df.map(fmt_moeda)
-    except AttributeError:
-        return df.applymap(fmt_moeda)
 
 def somente_digitos(txt):
     return "".join(ch for ch in (txt or "") if ch.isdigit())
@@ -321,8 +316,6 @@ def upsert_orcamento(ano, categoria_id, valor):
     else:
         sb_request("orcamentos_categoria", "POST", payload)
     st.cache_data.clear()
-
-
 
 # ==========================================
 # PÁGINA PÚBLICA DE INSCRIÇÃO
@@ -477,7 +470,6 @@ eventos_db = carregar("eventos")
 contas_bancarias_db = carregar("contas_bancarias")
 usuarios_db = carregar_usuarios()
 
-# SIMULADOR DE LOGIN (Para testes de perfil)
 st.sidebar.markdown("<h4 style='margin-top:0px;'>🔑 Acesso ao Sistema</h4>", unsafe_allow_html=True)
 if not usuarios_db:
     st.sidebar.warning("Crie o primeiro usuário na aba Gestão de Usuários.")
@@ -493,7 +485,19 @@ perfil_ativo = usuario_logado.get("perfil", "Visão Total Tesouraria")
 if "page" not in st.session_state:
     st.session_state.page = "Resumo do Dia" if perfil_ativo == "Visão Total Tesouraria" else ("Visão Consolidada" if perfil_ativo == "Visão Conselho" else "Painel de Eventos")
 
-# CSS agressivo omitido por brevidade (mantenha o seu CSS atual da sidebar aqui)
+st.markdown("""
+    <style>
+    [data-testid="stSidebar"] {
+        background-color: #F8FAFC !important;
+        border-right: 1px solid #E2E8F0 !important;
+    }
+    [data-testid="stSidebar"] .stButton button {
+        width: 100%; text-align: left; justify-content: flex-start;
+        border-radius: 8px; padding: 0.5rem 1rem; font-weight: 600;
+        margin-bottom: 4px; transition: all 0.2s ease;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 def secao(nome):
     st.sidebar.markdown(f"<p style='color:#94A3B8;font-size:0.68rem;font-weight:700;letter-spacing:0.08em;margin:10px 0 2px 4px;'>{nome}</p>", unsafe_allow_html=True)
@@ -506,7 +510,6 @@ def nav_button(label, icon):
 
 st.sidebar.markdown("<hr style='margin: 8px 0; border-color: #E2E8F0;'>", unsafe_allow_html=True)
 
-# LÓGICA DE EXIBIÇÃO DO MENU BASEADA NO PERFIL
 if perfil_ativo == "Visão Total Tesouraria":
     secao("OPERACIONAL")
     nav_button("Resumo do Dia", "🏠")
@@ -540,11 +543,11 @@ if perfil_ativo == "Visão Total Tesouraria":
     nav_button("Gestão de Usuários", "👥")
 
 page = st.session_state.page
+
 # ==========================================
 # RESUMO DO DIA 
 # ==========================================
 if page == "Resumo do Dia":
-    # CSS para puxar o conteúdo para o topo e forçar a mesma altura (dimensão) em todas as 4 caixas
     st.markdown("""
         <style>
         div.stMainBlockContainer, div[data-testid="stVerticalBlock"] {
@@ -699,12 +702,10 @@ if page == "Resumo do Dia":
             if st.button("Ir para Inscrições e Comprovantes →", key="resumo_ir_comprovantes", use_container_width=True):
                 st.session_state.page = "Inscrições e Comprovantes"
                 st.rerun()
-# ==========================================
-# ==========================================
-# ==========================================
-## ==========================================
+
 # ==========================================
 # VISÃO CONSOLIDADA
+# ==========================================
 elif page == "Visão Consolidada":
     st.title("📋 Visão Consolidada")
     st.markdown("Acompanhe o balanço mensal de Entradas e Saídas consolidado por categoria.")
@@ -717,7 +718,6 @@ elif page == "Visão Consolidada":
         anos_disp.append(ano_atual)
         anos_disp = sorted(anos_disp, reverse=True)
 
-    # Layout Superior: Ano de Referência à esquerda e Botão Exportar Excel à direita
     col_a1, col_a2 = st.columns([3, 1])
     ano_sel = col_a1.selectbox("Ano de Referência", anos_disp)
 
@@ -734,12 +734,10 @@ elif page == "Visão Consolidada":
         except:
             return str(val)
 
-    # Pré-cálculo das estruturas para o botão superior e abas
     pivot_ent = pd.DataFrame()
     pivot_sai = pd.DataFrame()
     resumo_geral = pd.DataFrame(index=MESES_PT)
 
-    # Entradas
     cats_entrada = [c['nome'] for c in categorias_db if c['tipo'] == 'Entrada']
     if not df_ano.empty:
         df_ent = df_ano[(df_ano['tipo'] == 'Entrada') & (df_ano['status'] == 'Concluído')]
@@ -759,7 +757,6 @@ elif page == "Visão Consolidada":
     pivot_ent['TOTAL ANUAL'] = pivot_ent.sum(axis=1)
     pivot_ent.loc['TOTAL'] = pivot_ent.sum(numeric_only=True)
 
-    # Saídas
     cats_saida = [c['nome'] for c in categorias_db if c['tipo'] == 'Saída']
     if not df_ano.empty:
         df_sai = df_ano[(df_ano['tipo'] == 'Saída') & (df_ano['status'] == 'Concluído')]
@@ -779,7 +776,6 @@ elif page == "Visão Consolidada":
     pivot_sai['TOTAL ANUAL'] = pivot_sai.sum(axis=1)
     pivot_sai.loc['TOTAL'] = pivot_sai.sum(numeric_only=True)
 
-    # Resumo Geral
     tot_ent = []
     tot_sai = []
     for m_idx, m_nome in enumerate(MESES_PT, 1):
@@ -843,12 +839,10 @@ elif page == "Visão Consolidada":
         altura_geral = (len(resumo_geral_fmt) + 1) * 35 + 38
         st.dataframe(resumo_geral_fmt, use_container_width=True, height=altura_geral)
 
-    # SEÇÃO DE DETALHAMENTO (DRILL-DOWN COM DOWNLOAD INDIVIDUAL)
     st.markdown("---")
     st.markdown("### 🔍 Detalhar Valores por Mês e Categoria")
     st.markdown("Selecione os filtros abaixo para ver detalhadamente quais itens compõem a soma e os comprovantes anexados (Modo Somente Leitura).")
 
-    # Estilo CSS compacto atualizado para alinhar o botão e a linha perfeitamente
     st.markdown("""
         <style>
             .drill-row {
@@ -858,7 +852,6 @@ elif page == "Visão Consolidada":
                 overflow: hidden !important;
                 text-overflow: ellipsis !important;
             }
-            /* Deixa os botões da tabela compactos e na altura exata da linha */
             div.stButton > button {
                 padding: 2px 10px !important;
                 font-size: 12px !important;
@@ -892,7 +885,6 @@ elif page == "Visão Consolidada":
         else:
             st.markdown("#### Lista de Lançamentos e Comprovantes")
             
-            # Pré-carrega todos os anexos para cruzamento rápido em memória
             todos_anexos = sb_request("lancamento_anexos", "GET")
             mapa_anexos = {}
             if todos_anexos:
@@ -902,11 +894,9 @@ elif page == "Visão Consolidada":
                         mapa_anexos[l_id] = []
                     mapa_anexos[l_id].append(anexo)
 
-            # Ordenação solicitada: 1º Saídas em cima e Entradas embaixo, 2º Data mais recente em cima
             df_detalhe['ordem_tipo'] = df_detalhe['tipo'].map({'Saída': 0, 'Entrada': 1})
             df_detalhe = df_detalhe.sort_values(by=['ordem_tipo', 'data_competencia'], ascending=[True, False])
             
-            # Cabeçalho customizado
             header_cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2])
             header_cols[0].markdown("**Tipo**")
             header_cols[1].markdown("**Data**")
@@ -928,7 +918,6 @@ elif page == "Visão Consolidada":
                 cols[4].markdown(f"<div class='drill-row'>{fmt_moeda(row['valor'])}</div>", unsafe_allow_html=True)
                 cols[5].markdown(f"<div class='drill-row'>{row['conta_nome']}</div>", unsafe_allow_html=True)
                 
-                # Coleta anexos da tabela nova ou do legado
                 anexos_deste = mapa_anexos.get(row_id, [])
                 if not anexos_deste and row.get('url_anexo') and isinstance(row.get('url_anexo'), str) and row.get('url_anexo').strip():
                     anexos_deste = [{
@@ -942,9 +931,11 @@ elif page == "Visão Consolidada":
                         st.session_state[f"show_vis_anexo_{row_id}"] = not st.session_state.get(f"show_vis_anexo_{row_id}", False)
                         st.rerun()
                 else:
-                    cols[6].markdown("<div class='drill-row' style='color: #64748B;'>Sem anexo</div>", unsafe_allow_html=True)
+                    if row['tipo'] == 'Saída':
+                        cols[6].markdown('<span class="badge-falta-anexo">🔴 Falta anexo</span>', unsafe_allow_html=True)
+                    else:
+                        cols[6].markdown("<div class='drill-row' style='color: #64748B;'>—</div>", unsafe_allow_html=True)
 
-                # Painel expansível de VISUALIZAÇÃO (Somente Leitura) de anexos na Visão Consolidada
                 if st.session_state.get(f"show_vis_anexo_{row_id}", False):
                     with st.container(border=True):
                         st.markdown(f"**Documentos Anexados - {row['descricao']}**")
@@ -964,27 +955,12 @@ elif page == "Visão Consolidada":
                 
                 st.markdown("<hr style='margin:2px 0;border-color:#F1F5F9;'>", unsafe_allow_html=True)
 
-            st.markdown("")
-            exibir_export = df_detalhe[['type' if 'type' in df_detalhe else 'tipo', 'data_competencia', 'descricao', 'categoria_nome', 'valor', 'conta_nome']].copy()
-            exibir_export['data_competencia'] = exibir_export['data_competencia'].dt.strftime('%d/%m/%Y')
-            exibir_export.columns = ['Tipo', 'Data', 'Descrição', 'Categoria', 'Valor', 'Conta']
-            
-            excel_detalhe = to_excel_bytes({"Detalhes": exibir_export})
-            st.download_button(
-                label="💾 Baixar Tabela Selecionada (Excel)",
-                data=excel_detalhe,
-                file_name=f"Detalhes_{ano_sel}_{mes_drill}_{cat_drill}.xlsx".replace(" ", "_"),
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
 # ==========================================
-# ==========================================
-# ==========================================
-# TESOURARIA (COM ANEXO MANDATÓRIO PARA PAGAR E OPCIONAL PARA RECEBER)
+# TESOURARIA
 # ==========================================
 elif page == "Tesouraria":
     st.title("Tesouraria")
     
-    # Sincroniza a aba solicitada externamente (ex: botão Detalhes) com o componente de abas
     if "tesouraria_tab" in st.session_state:
         st.session_state["tesouraria_active_tab"] = st.session_state.pop("tesouraria_tab")
 
@@ -1058,7 +1034,6 @@ elif page == "Tesouraria":
                 conta_sel = col6.selectbox("Conta Bancária", list(contas_opcoes.keys()), key="unico_conta")
                 tag = col7.selectbox("Projeto / Evento", ["Nenhum"] + [e['nome'] for e in eventos_db], key="unico_tag")
 
-            # Uploader unificado e limpo para múltiplos anexos
             arquivos = st.file_uploader(
                 "Comprovantes / Notas Fiscais (Permite múltiplos arquivos)", 
                 type=['png', 'jpg', 'jpeg', 'pdf'], 
@@ -1084,7 +1059,6 @@ elif page == "Tesouraria":
                             "recorrente": bool(recorrente)
                         }
                         
-                        # Se for recorrente, envia usando os nomes exatos das suas colunas no banco
                         if recorrente:
                             payload_lanc["dia_vencimento_fixo"] = int(dia_vencimento)
                             payload_lanc["data_fim_recorrencia"] = str(data_fim_rec)
@@ -1103,6 +1077,7 @@ elif page == "Tesouraria":
                             st.success("✅ Lançamento e anexos registrados com sucesso!")
                             time.sleep(1)
                             st.rerun()
+
     with tab2:
         df = carregar_lancamentos_df()
         pend = df[(df['status'] == 'Pendente') & (df['recorrente'] != True)].copy() if not df.empty else pd.DataFrame()
@@ -1115,12 +1090,10 @@ elif page == "Tesouraria":
             pend_pagar = pend[pend['tipo'] == 'Saída'].sort_values('data_vencimento') if 'tipo' in pend.columns else pd.DataFrame()
             pend_receber = pend[pend['tipo'] == 'Entrada'].sort_values('data_vencimento') if 'tipo' in pend.columns else pd.DataFrame()
 
-            # Bloco Superior: Contas a Pagar
             st.subheader("💳 Contas a Pagar")
             if pend_pagar.empty:
                 st.success("Nenhuma conta a pagar pendente. 👍")
             else:
-                # Cabeçalho customizado para Contas a Pagar
                 h_pagar = st.columns([3, 1.4, 1.4, 1.4, 1.2])
                 h_pagar[0].markdown("**Descrição / Categoria**")
                 h_pagar[1].markdown("**Valor**")
@@ -1179,12 +1152,10 @@ elif page == "Tesouraria":
 
             st.markdown("---")
 
-            # Bloco Inferior: Contas a Receber
             st.subheader("💰 Contas a Receber")
             if pend_receber.empty:
                 st.success("Nenhuma conta a receber pendente. 👍")
             else:
-                # Cabeçalho customizado para Contas a Receber
                 h_receber = st.columns([3, 1.4, 1.4, 1.4, 1.2])
                 h_receber[0].markdown("**Descrição / Categoria**")
                 h_receber[1].markdown("**Valor**")
@@ -1238,6 +1209,7 @@ elif page == "Tesouraria":
                             if col_b2.button("❌ Cancelar", key=f"canc_receber_{row_id}_{idx}"):
                                 st.session_state[session_key_rec] = False
                                 st.rerun()
+
     with tab3:
         df = carregar_lancamentos_df()
         if df.empty:
@@ -1245,8 +1217,16 @@ elif page == "Tesouraria":
         else:
             st.markdown("### Filtros de Lançamentos")
             
-            # 5 colunas de filtros: De, Até, Tipo, Situação, Categoria
-            col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
+            todos_anexos = sb_request("lancamento_anexos", "GET")
+            mapa_anexos = {}
+            if todos_anexos:
+                for anexo in todos_anexos:
+                    l_id = anexo['lancamento_id']
+                    if l_id not in mapa_anexos:
+                        mapa_anexos[l_id] = []
+                    mapa_anexos[l_id].append(anexo)
+
+            col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
             start_date = date.today().replace(day=1)
             end_date = (pd.Timestamp.today() + pd.offsets.MonthEnd(1)).date()
             
@@ -1260,7 +1240,8 @@ elif page == "Tesouraria":
             categorias_unicas = sorted(df['categoria_nome'].dropna().unique().tolist()) if 'categoria_nome' in df.columns else []
             filtro_categorias = col_f5.multiselect("Categoria", categorias_unicas, default=categorias_unicas, key="hist_ft_cat")
             
-            # Aplicação dos filtros
+            filtro_anexo = col_f6.selectbox("Status do Anexo", ["Todos", "Com Anexo", "Falta Anexo"], key="hist_ft_anexo")
+            
             mask_data = (df['data_competencia'].dt.date >= data_inicio) & (df['data_competencia'].dt.date <= data_fim)
             dff = df[
                 mask_data & 
@@ -1268,16 +1249,28 @@ elif page == "Tesouraria":
                 df['status'].isin(filtro_status) & 
                 df['categoria_nome'].isin(filtro_categorias)
             ].copy()
+
+            # Aplicar filtro customizado de anexo
+            if filtro_anexo != "Todos":
+                ids_filtrados = []
+                for _, r in dff.iterrows():
+                    r_id = str(r['id'])
+                    tem_reg = len(mapa_anexos.get(r_id, [])) > 0 or (isinstance(r.get('url_anexo'), str) and r.get('url_anexo').strip())
+                    is_saida = (r['tipo'] == 'Saída')
+                    
+                    if filtro_anexo == "Com Anexo" and tem_reg:
+                        ids_filtrados.append(r['id'])
+                    elif filtro_anexo == "Falta Anexo" and is_saida and not tem_reg:
+                        ids_filtrados.append(r['id'])
+                dff = dff[dff['id'].isin(ids_filtrados)]
             
             if dff.empty:
                 st.info("Nenhum lançamento encontrado para os filtros selecionados.")
             else:
-                # Soma dinâmica dos filtrados (Entradas somam, Saídas subtraem)
                 total_entradas_filt = dff[dff['tipo'] == 'Entrada']['valor'].sum()
                 total_saidas_filt = dff[dff['tipo'] == 'Saída']['valor'].sum()
                 saldo_filtrado = total_entradas_filt - total_saidas_filt
 
-                # Exibe a métrica dinâmica do filtro
                 st.markdown("")
                 col_m1, col_m2, col_m3 = st.columns([1.5, 1.5, 3])
                 col_m1.metric("Total Filtrado (Líquido)", fmt_moeda(saldo_filtrado))
@@ -1288,18 +1281,7 @@ elif page == "Tesouraria":
                 dff = dff.sort_values(by=['ordem_tipo', 'data_competencia'], ascending=[True, False])
                 
                 st.markdown("#### Lista de Lançamentos e Comprovantes")
-                
-                # Pré-carrega todos os anexos para cruzamento rápido em memória
-                todos_anexos = sb_request("lancamento_anexos", "GET")
-                mapa_anexos = {}
-                if todos_anexos:
-                    for anexo in todos_anexos:
-                        l_id = anexo['lancamento_id']
-                        if l_id not in mapa_anexos:
-                            mapa_anexos[l_id] = []
-                        mapa_anexos[l_id].append(anexo)
 
-                # Cabeçalho customizado (última coluna para o lápis de edição)
                 header_cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2, 0.8])
                 header_cols[0].markdown("**Tipo**")
                 header_cols[1].markdown("**Data**")
@@ -1322,7 +1304,6 @@ elif page == "Tesouraria":
                     cols[4].markdown(f"<div class='drill-row'>{fmt_moeda(row['valor'])}</div>", unsafe_allow_html=True)
                     cols[5].markdown(f"<div class='drill-row'>{row['conta_nome']}</div>", unsafe_allow_html=True)
                     
-                    # Coleta anexos da tabela nova ou do legado
                     anexos_deste = mapa_anexos.get(row_id, [])
                     if not anexos_deste and row.get('url_anexo') and isinstance(row.get('url_anexo'), str) and row.get('url_anexo').strip():
                         anexos_deste = [{
@@ -1336,14 +1317,15 @@ elif page == "Tesouraria":
                             st.session_state[f"show_hist_anexo_{row_id}"] = not st.session_state.get(f"show_hist_anexo_{row_id}", False)
                             st.rerun()
                     else:
-                        cols[6].markdown("<div class='drill-row' style='color: #64748B;'>Sem anexo</div>", unsafe_allow_html=True)
+                        if row['tipo'] == 'Saída':
+                            cols[6].markdown('<span class="badge-falta-anexo">🔴 Falta anexo</span>', unsafe_allow_html=True)
+                        else:
+                            cols[6].markdown("<div class='drill-row' style='color: #64748B;'>—</div>", unsafe_allow_html=True)
 
-                    # Coluna do Lápis para disparar a edição completa
                     if cols[7].button("✏️", key=f"btn_edit_lapis_{row_id}", help="Editar Lançamento"):
                         st.session_state[f"edit_lanc_ativo"] = row_id
                         st.rerun()
 
-                    # Painel expansível de gestão de anexos
                     if st.session_state.get(f"show_hist_anexo_{row_id}", False):
                         with st.container(border=True):
                             st.markdown(f"**Gerenciar Anexos - {row['descricao']}**")
@@ -1382,7 +1364,6 @@ elif page == "Tesouraria":
                                 st.session_state[f"show_hist_anexo_{row_id}"] = False
                                 st.rerun()
 
-                    # Bloco de edição COMPLETA ativado pelo clique no ícone de lápis
                     if st.session_state.get(f"edit_lanc_ativo") == row_id:
                         with st.container(border=True):
                             st.markdown(f"#### ✏️ Editando Lançamento: {row.get('descricao', '')}")
@@ -1426,6 +1407,9 @@ elif page == "Tesouraria":
                                     selected_conta_obj = next((cb for cb in contas_bancarias_db if cb.get('nome') == n_conta_nome), None) if 'contas_bancarias_db' in globals() and contas_bancarias_db else None
                                     n_conta_id = selected_conta_obj.get('id') if selected_conta_obj else lanc_raw.get('conta_bancaria_id')
 
+                                st.markdown("---")
+                                novos_arq_edicao = st.file_uploader("📎 Adicionar Anexos nesta Edição (Opcional)", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True, key=f"ed_up_files_{row_id}")
+
                                 st.markdown("")
                                 c_b1, c_b2, c_b3 = st.columns(3)
                                 btn_upd = c_b1.form_submit_button("💾 Salvar Alterações", use_container_width=True)
@@ -1445,6 +1429,9 @@ elif page == "Tesouraria":
                                         "conta_nome": n_conta_nome
                                     }
                                     sb_request("lancamentos", "PATCH", payload, filtros={"id": f"eq.{row_id}"})
+                                    if novos_arq_edicao:
+                                        processar_e_salvar_anexos(novos_arq_edicao, row_id, n_data, n_cat_nome, n_desc)
+                                        
                                     st.session_state[f"edit_lanc_ativo"] = None
                                     st.cache_data.clear()
                                     st.success("Lançamento atualizado com sucesso!")
@@ -1464,9 +1451,9 @@ elif page == "Tesouraria":
                     st.markdown("<hr style='margin:2px 0;border-color:#F1F5F9;'>", unsafe_allow_html=True)
 
                 st.markdown("")
-                exibir_export = dff[['tipo', 'data_competencia', 'descricao', 'categoria_nome', 'valor', 'conta_nome', 'status']].copy()
+                exibir_export = dff[['type' if 'type' in dff else 'tipo', 'data_competencia', 'descricao', 'categoria_nome', 'valor', 'conta_nome']].copy()
                 exibir_export['data_competencia'] = exibir_export['data_competencia'].dt.strftime('%d/%m/%Y')
-                exibir_export.columns = ['Tipo', 'Data', 'Descrição', 'Categoria', 'Valor', 'Conta', 'Situação']
+                exibir_export.columns = ['Tipo', 'Data', 'Descrição', 'Categoria', 'Valor', 'Conta']
                 
                 excel_detalhe = to_excel_bytes({"Lancamentos": exibir_export})
                 st.download_button(
@@ -1476,6 +1463,7 @@ elif page == "Tesouraria":
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="btn_dl_lanc_filtro"
                 )
+
     with tab4:
         st.markdown("### Gerenciamento de Regras Recorrentes (Despesas/Receitas Fixas)")
         df_all = carregar_lancamentos_df()
@@ -1579,9 +1567,9 @@ elif page == "Tesouraria":
                                 st.session_state[f"editing_rec_{rec_id}"] = False
                                 st.rerun()
                 st.markdown("<hr style='margin:6px 0;border:none;border-top:1px solid #E2E8F0;'>", unsafe_allow_html=True)
+
 # ==========================================
-# ==========================================
-# CONCILIAÇÃO BANCÁRIA (COM IMPORTAÇÃO INTELIGENTE DE OFX)
+# CONCILIAÇÃO BANCÁRIA
 # ==========================================
 elif page == "Conciliação Bancária":
     st.title("Conciliação Bancária")
@@ -1660,11 +1648,10 @@ elif page == "Conciliação Bancária":
         tab_ofx, tab_manual = st.tabs(["⚡ Importação Inteligente (OFX)", "🖐️ Conciliação Manual"])
 
         with tab_ofx:
-            st.markdown("Faça o upload do arquivo **.OFX** gerado pelo seu banco. O sistema cruzará os dados, **extrairá o nome do remetente/beneficiário** e detectará automaticamente os centavos dos eventos.")
-            arquivo_ofx = st.file_uploader("Selecione o arquivo OFX do banco", type=['ofx', 'txt'], key="up_ofx_novo_v4")
+            st.markdown("Faça o upload do arquivo **.OFX** gerado pelo seu banco. O sistema cruzará os dados e **cadastrará todas as transações marcadas instantaneamente**. As saídas que precisarem de nota fiscal receberão o aviso 🔴 **Falta anexo** na Conciliação Manual para você anexar depois.")
+            arquivo_ofx = st.file_uploader("Selecione o arquivo OFX do banco", type=['ofx', 'txt'], key="up_ofx_novo_v5")
 
             if arquivo_ofx:
-                import re
                 content = arquivo_ofx.read().decode('latin1', errors='ignore')
                 transacoes = []
                 
@@ -1708,9 +1695,7 @@ elif page == "Conciliação Bancária":
 
                 df_ofx = pd.DataFrame(transacoes)
 
-                if df_ofx.empty:
-                    st.warning("⚠️ Não foi possível identificar transações válidas neste arquivo OFX. Verifique o formato.")
-                else:
+                if not df_ofx.empty:
                     used_ids = set()
                     for idx, row in df_ofx.iterrows():
                         if not df_conta.empty:
@@ -1734,11 +1719,8 @@ elif page == "Conciliação Bancária":
                         
                         cats_entrada = [c['nome'] for c in categorias_db if c['tipo'] == 'Entrada']
                         cats_saida = [c['nome'] for c in categorias_db if c['tipo'] == 'Saída']
-                        
                         nomes_eventos = ["Nenhum"] + [e['nome'] for e in eventos_db]
-                        map_centavos_evento = {str(e.get('codigo_centavos')).strip().zfill(2): e['nome'] for e in eventos_db if e.get('codigo_centavos')}
                         map_cat_id = {c['nome']: c['id'] for c in categorias_db}
-                        map_evento_obj = {e['nome']: e for e in eventos_db}
                         
                         df_entradas = df_novos[df_novos['Tipo'] == 'Entrada'].copy()
                         df_saidas = df_novos[df_novos['Tipo'] == 'Saída'].copy()
@@ -1750,32 +1732,16 @@ elif page == "Conciliação Bancária":
                             st.markdown("#### 🟢 Novas Entradas (Recebimentos)")
                             df_entradas.insert(0, 'Cadastrar', True)
                             df_entradas['Descrição para Sistema'] = "Extrato: " + df_entradas['Nome Identificado']
-                            
-                            projetos_sugeridos = []
-                            for v in df_entradas['Valor']:
-                                centavos_str = f"{v:.2f}".split('.')[-1]
-                                proj = map_centavos_evento.get(centavos_str, "Nenhum")
-                                projetos_sugeridos.append(proj)
-                            df_entradas['Projeto'] = projetos_sugeridos
-                            
-                            cat_padrao_ent = "Inscrições de Eventos" if "Inscrições de Eventos" in cats_entrada else (cats_entrada[0] if cats_entrada else "")
-                            df_entradas['Categoria'] = cat_padrao_ent
+                            df_entradas['Projeto'] = "Nenhum"
+                            df_entradas['Categoria'] = cats_entrada[0] if cats_entrada else ""
                             
                             df_entradas_final = st.data_editor(
                                 df_entradas[['Cadastrar', 'Data', 'Descrição Bancária', 'Descrição para Sistema', 'Valor', 'Categoria', 'Projeto']],
-                                column_config={
-                                    "Data": st.column_config.DateColumn(disabled=True, format="DD/MM/YYYY"),
-                                    "Descrição Bancária": st.column_config.TextColumn(disabled=True),
-                                    "Descrição para Sistema": st.column_config.TextColumn(required=True),
-                                    "Valor": st.column_config.NumberColumn(disabled=True, format="R$ %.2f"),
-                                    "Categoria": st.column_config.SelectboxColumn(options=cats_entrada, required=True),
-                                    "Projeto": st.column_config.SelectboxColumn(options=nomes_eventos, help="Detectado automaticamente pelos centavos")
-                                },
                                 hide_index=True, use_container_width=True, key="ed_entradas_ofx"
                             )
 
                         if not df_saidas.empty:
-                            st.markdown("#### 🔴 Novas Saídas (Pagamentos)")
+                            st.markdown("#### 🔴 Novas Saídas (Pagamentos) - Serão marcadas como 'Falta Anexo' automaticamente")
                             df_saidas.insert(0, 'Cadastrar', True)
                             df_saidas['Descrição para Sistema'] = "Extrato: " + df_saidas['Nome Identificado']
                             df_saidas['Categoria'] = cats_saida[0] if cats_saida else ""
@@ -1783,85 +1749,53 @@ elif page == "Conciliação Bancária":
                             
                             df_saidas_final = st.data_editor(
                                 df_saidas[['Cadastrar', 'Data', 'Descrição Bancária', 'Descrição para Sistema', 'Valor', 'Categoria', 'Projeto']],
-                                column_config={
-                                    "Data": st.column_config.DateColumn(disabled=True, format="DD/MM/YYYY"),
-                                    "Descrição Bancária": st.column_config.TextColumn(disabled=True),
-                                    "Descrição para Sistema": st.column_config.TextColumn(required=True),
-                                    "Valor": st.column_config.NumberColumn(disabled=True, format="R$ %.2f"),
-                                    "Categoria": st.column_config.SelectboxColumn(options=cats_saida, required=True),
-                                    "Projeto": st.column_config.SelectboxColumn(options=nomes_eventos)
-                                },
                                 hide_index=True, use_container_width=True, key="ed_saidas_ofx"
                             )
 
-                        if st.button("💾 Salvar Marcados no Sistema e Alimentar Bolsão", type="primary"):
+                        if st.button("💾 Salvar Lote Imediatamente", type="primary"):
                             total_salvos = 0
                             
                             if not df_entradas_final.empty:
                                 para_salvar_ent = df_entradas_final[df_entradas_final['Cadastrar'] == True]
                                 for _, row in para_salvar_ent.iterrows():
                                     cc = None if row['Projeto'] == "Nenhum" else row['Projeto']
-                                    res_l = sb_request("lancamentos", "POST", [{
-                                        "descricao": row['Descrição para Sistema'],
-                                        "tipo": "Entrada",
-                                        "valor": float(row['Valor']),
-                                        "data_competencia": str(row['Data']),
-                                        "status": "Concluído",
-                                        "data_pagamento": str(row['Data']),
+                                    sb_request("lancamentos", "POST", [{
+                                        "descricao": row['Descrição para Sistema'], "tipo": "Entrada",
+                                        "valor": float(row['Valor']), "data_competencia": str(row['Data']),
+                                        "status": "Concluído", "data_pagamento": str(row['Data']),
                                         "categoria_id": map_cat_id.get(row['Categoria']),
-                                        "conta_bancaria_id": conta_id,
-                                        "centro_custo": cc,
-                                        "conciliado": True
+                                        "conta_bancaria_id": conta_id, "centro_custo": cc, "conciliado": True
                                     }])
-                                    
-                                    if res_l and isinstance(res_l, list) and len(res_l) > 0:
-                                        lanc_id = res_l[0]['id']
-                                        total_salvos += 1
-                                        if cc and cc in map_evento_obj:
-                                            ev_obj = map_evento_obj[cc]
-                                            sb_request("creditos_ofx", "POST", {
-                                                "evento_id": ev_obj['id'],
-                                                "data": str(row['Data']),
-                                                "valor": float(row['Valor']),
-                                                "descricao_bancaria": row['Descrição Bancária'],
-                                                "status": "Disponível",
-                                                "lancamento_id": lanc_id
-                                            })
+                                    total_salvos += 1
 
                             if not df_saidas_final.empty:
                                 para_salvar_sai = df_saidas_final[df_saidas_final['Cadastrar'] == True]
                                 for _, row in para_salvar_sai.iterrows():
                                     cc = None if row['Projeto'] == "Nenhum" else row['Projeto']
                                     sb_request("lancamentos", "POST", [{
-                                        "descricao": row['Descrição para Sistema'],
-                                        "tipo": "Saída",
-                                        "valor": float(row['Valor']),
-                                        "data_competencia": str(row['Data']),
-                                        "status": "Concluído",
-                                        "data_pagamento": str(row['Data']),
+                                        "descricao": row['Descrição para Sistema'], "tipo": "Saída",
+                                        "valor": float(row['Valor']), "data_competencia": str(row['Data']),
+                                        "status": "Concluído", "data_pagamento": str(row['Data']),
                                         "categoria_id": map_cat_id.get(row['Categoria']),
-                                        "conta_bancaria_id": conta_id,
-                                        "centro_custo": cc,
-                                        "conciliado": True
+                                        "conta_bancaria_id": conta_id, "centro_custo": cc, "conciliado": True
                                     }])
                                     total_salvos += 1
 
-                            if total_salvos == 0:
-                                st.warning("Marque pelo menos um item na coluna 'Cadastrar'.")
-                            else:
+                            if total_salvos > 0:
                                 st.cache_data.clear()
-                                st.success(f"✅ {total_salvos} transações salvas e créditos direcionados para o bolsão!")
-                                time.sleep(1.5)
+                                st.success(f"✅ {total_salvos} transações salvas com sucesso! Vá para 'Conciliação Manual' para anexar os comprovantes pendentes.")
+                                time.sleep(2)
                                 st.rerun()
+                            else:
+                                st.warning("Marque pelo menos um item para salvar.")
 
         with tab_manual:
-            st.subheader("Lista de Lançamentos da Conta")
+            st.subheader("Lista de Lançamentos e Pendências de Anexos")
             
             if df_conta.empty:
                 st.info("Nenhum lançamento concluído nesta conta ainda.")
             else:
                 col_f1, col_f2 = st.columns(2)
-                
                 meses_disponiveis = sorted(df_conta['data_competencia'].dt.strftime('%Y-%m').unique().tolist(), reverse=True)
                 filtro_mes = col_f1.selectbox("Filtrar por Mês", ["Todos"] + meses_disponiveis, key="concil_filtro_mes")
                 apenas_nao_conciliados = col_f2.checkbox("Mostrar apenas não conciliados", value=True, key="concil_so_pendentes")
@@ -1871,25 +1805,32 @@ elif page == "Conciliação Bancária":
                     dff_manual = dff_manual[dff_manual['data_competencia'].dt.strftime('%Y-%m') == filtro_mes]
                 if apenas_nao_conciliados:
                     dff_manual = dff_manual[dff_manual['conciliado'] != True]
-
-                st.caption(f"Exibindo {len(dff_manual)} lançamento(s) para os filtros selecionados.")
                 
                 if dff_manual.empty:
                     st.success("Nenhum lançamento pendente de conciliação para este filtro! 🎉")
                 else:
-                    hc1, hc2, hc3, hc4, hc5, hc6, hc7 = st.columns([1.0, 2.5, 2.0, 1.2, 1.0, 0.8, 1.2])
+                    todos_anexos_conc = sb_request("lancamento_anexos", "GET")
+                    mapa_anexos_conc = {}
+                    if todos_anexos_conc:
+                        for ax in todos_anexos_conc:
+                            l_id = ax['lancamento_id']
+                            if l_id not in mapa_anexos_conc:
+                                mapa_anexos_conc[l_id] = []
+                            mapa_anexos_conc[l_id].append(ax)
+                    
+                    hc1, hc2, hc3, hc4, hc5, hc6, hc7 = st.columns([1.0, 2.5, 2.0, 1.2, 1.2, 0.8, 1.2])
                     hc1.markdown("**Data**")
                     hc2.markdown("**Descrição**")
                     hc3.markdown("**Categoria**")
                     hc4.markdown("**Valor**")
-                    hc5.markdown("**Anexo**")
+                    hc5.markdown("**Anexos**")
                     hc6.markdown("**Det.**")
                     hc7.markdown("**Conciliado**")
                     st.markdown("<hr style='margin:4px 0;border-color:#CBD5E1;'>", unsafe_allow_html=True)
 
                     for _, row in dff_manual.sort_values('data_competencia', ascending=False).iterrows():
                         row_id = str(row['id'])
-                        c1, c2, c3, c4, c5, c6, c7 = st.columns([1.0, 2.5, 2.0, 1.2, 1.0, 0.8, 1.2])
+                        c1, c2, c3, c4, c5, c6, c7 = st.columns([1.0, 2.5, 2.0, 1.2, 1.2, 0.8, 1.2])
                         
                         c1.write(row['data_competencia'].strftime('%d/%m/%Y'))
                         c2.write(row['descricao'] or '—')
@@ -1898,15 +1839,17 @@ elif page == "Conciliação Bancária":
                         val_str = fmt_moeda(row['valor']) if row['tipo'] == 'Entrada' else f"-{fmt_moeda(row['valor'])}"
                         c4.write(val_str)
                         
-                        path_anexo = row.get('url_anexo')
-                        if path_anexo and isinstance(path_anexo, str) and path_anexo.strip():
-                            link_url = obter_link_arquivo(path_anexo)
-                            if link_url:
-                                c5.markdown(f"[📎 Baixar]({link_url})", unsafe_allow_html=True)
-                            else:
-                                c5.markdown("Indisp.")
+                        anexos_deste = mapa_anexos_conc.get(row_id, [])
+                        if not anexos_deste and row.get('url_anexo') and isinstance(row.get('url_anexo'), str) and row.get('url_anexo').strip():
+                            anexos_deste = [{'id': 'legacy', 'url_storage': row.get('url_anexo'), 'nome_original': row.get('url_anexo').split('/')[-1]}]
+                            
+                        if len(anexos_deste) > 0:
+                            c5.markdown(f"📎 {len(anexos_deste)} anexo(s)")
                         else:
-                            c5.markdown("—")
+                            if row['tipo'] == 'Saída':
+                                c5.markdown('<span class="badge-falta-anexo">🔴 Falta anexo</span>', unsafe_allow_html=True)
+                            else:
+                                c5.markdown("—")
                         
                         if c6.button("🔍", key=f"detalhe_btn_{row_id}", help="Ver detalhes e anexos"):
                             st.session_state[f"show_detalhe_{row_id}"] = not st.session_state.get(f"show_detalhe_{row_id}", False)
@@ -1916,53 +1859,63 @@ elif page == "Conciliação Bancária":
                         novo_valor = c7.checkbox(" ", value=marcado, key=f"conc_{row_id}")
                         
                         if novo_valor != marcado:
-                            res = sb_request("lancamentos", "PATCH", {"conciliado": novo_valor}, filtros={"id": f"eq.{row_id}"})
-                            if res is not None:
-                                st.cache_data.clear()
-                                st.rerun()
+                            sb_request("lancamentos", "PATCH", {"conciliado": novo_valor}, filtros={"id": f"eq.{row_id}"})
+                            st.cache_data.clear(); st.rerun()
 
                         if st.session_state.get(f"show_detalhe_{row_id}", False):
                             with st.container(border=True):
-                                st.markdown(f"**Conferência do Lançamento:** {row['descricao']}")
-                                st.write(f"• **Tipo:** {row['tipo']} | **Conta Bancária:** {row.get('conta_nome', '—')}")
-                                st.write(f"• **Centro de Custo / Projeto:** {row.get('centro_custo', 'Nenhum')}")
-                                st.write(f"• **Situação:** {row.get('status', '—')}")
+                                st.markdown(f"**Conferência e Anexos:** {row['descricao']}")
+                                st.write(f"• **Tipo:** {row['tipo']} | **Centro de Custo:** {row.get('centro_custo', 'Nenhum')}")
                                 
                                 st.markdown("---")
-                                st.markdown("**📎 Documentos e Comprovantes Anexados:**")
-                                
-                                anexos_lanc = sb_request("lancamento_anexos", "GET", filtros={"lancamento_id": f"eq.{row_id}"})
-                                
-                                if not anexos_lanc:
-                                    st.caption("Nenhum arquivo anexado a este lançamento.")
-                                else:
-                                    for anexo in anexos_lanc:
+                                if anexos_deste:
+                                    st.markdown("**📎 Comprovantes Atuais:**")
+                                    for anexo in anexos_deste:
                                         col_a1, col_a2 = st.columns([3, 1])
                                         link_download = obter_link_arquivo(anexo['url_storage'])
-                                        nome_exibicao = anexo.get('nome_original') or anexo['url_storage'].split('/')[-1]
+                                        nome_ex = anexo.get('nome_original') or anexo['url_storage'].split('/')[-1]
                                         
                                         if link_download:
-                                            col_a1.markdown(f"📄 [{nome_exibicao}]({link_download})", unsafe_allow_html=True)
+                                            col_a1.markdown(f"📄 [{nome_ex}]({link_download})", unsafe_allow_html=True)
                                         else:
-                                            col_a1.write(nome_exibicao)
+                                            col_a1.write(nome_ex)
                                             
-                                        if col_a2.button("🗑️ Apagar", key=f"del_anexo_{anexo['id']}"):
+                                        if col_a2.button("🗑️ Apagar", key=f"del_anexo_conc_{anexo.get('id', 'legacy')}_{row_id}"):
                                             try:
                                                 supabase.storage.from_("comprovantes").remove([anexo['url_storage']])
-                                                sb_request("lancamento_anexos", "DELETE", filtros={"id": f"eq.{anexo['id']}"})
-                                                st.cache_data.clear()
-                                                st.success("Anexo excluído com sucesso!")
-                                                st.rerun()
-                                            except Exception as e:
-                                                st.error(f"Erro ao excluir anexo: {e}")
+                                                if anexo.get('id') == 'legacy':
+                                                    sb_request("lancamentos", "PATCH", {"url_anexo": None}, filtros={"id": f"eq.{row_id}"})
+                                                else:
+                                                    sb_request("lancamento_anexos", "DELETE", filtros={"id": f"eq.{anexo['id']}"})
+                                                st.cache_data.clear(); st.rerun()
+                                            except Exception:
+                                                pass
+                                else:
+                                    if row['tipo'] == 'Saída':
+                                        st.error("⚠️ Esta saída está exigindo um comprovante para fechamento fiscal.")
+                                    else:
+                                        st.caption("Nenhum arquivo anexado (Opcional para entradas).")
 
-                                st.markdown("")
-                                if st.button("Fechar Detalhes", key=f"close_det_{row_id}"):
+                                arq_adicionais_conc = st.file_uploader("📎 Enviar Comprovante(s) Pendente(s)", type=['png', 'jpg', 'jpeg', 'pdf'], accept_multiple_files=True, key=f"up_concil_{row_id}")
+                                c_btn_up1, c_btn_up2 = st.columns(2)
+                                
+                                if c_btn_up1.button("💾 Salvar Arquivos", key=f"btn_save_concil_up_{row_id}", type="primary"):
+                                    if arq_adicionais_conc:
+                                        with st.spinner("Salvando..."):
+                                            processar_e_salvar_anexos(arq_adicionais_conc, row_id, row['data_competencia'], row['categoria_nome'], row['descricao'])
+                                            st.cache_data.clear()
+                                            st.success("Anexos salvos com sucesso!")
+                                            time.sleep(1)
+                                            st.rerun()
+                                    else:
+                                        st.warning("Selecione um arquivo para enviar.")
+                                        
+                                if c_btn_up2.button("❌ Fechar Detalhes", key=f"close_det_{row_id}"):
                                     st.session_state[f"show_detalhe_{row_id}"] = False
                                     st.rerun()
 
                         st.markdown("<hr style='margin:2px 0;border-color:#F1F5F9;'>", unsafe_allow_html=True)
-# ==========================================
+
 # ==========================================
 # PAINEL DE EVENTOS
 # ==========================================
@@ -2021,7 +1974,6 @@ elif page == "Painel de Eventos":
                     n_nome_ev = st.text_input("Nome", value=ev_data['nome'])
                     n_codigo_rec_ev = st.text_input("Código Contábil", value=ev_data.get('codigo_receita_contabil') or "")
                     
-                    # Tratamento seguro e limpo para evitar erro de data nula ou inválida
                     raw_data_ev = ev_data.get('data_evento')
                     if pd.isna(raw_data_ev) or not raw_data_ev:
                         default_date = date.today()
@@ -2094,35 +2046,33 @@ elif page == "Painel de Eventos":
 
             app_url = st.secrets.get("APP_URL", "").rstrip("/")
         
-        # Proteção caso o APP_URL nos Secrets tenha sido salvo com colchetes por engano
-        if "[" in app_url and "](" in app_url:
-            import re
-            match = re.search(r'\((https?://[^)]+)\)', app_url)
-            app_url = match.group(1) if match else "https://financeiro-comuna-sbc.streamlit.app"
-        elif not app_url:
-            app_url = "https://financeiro-comuna-sbc.streamlit.app"
+            if "[" in app_url and "](" in app_url:
+                import re
+                match = re.search(r'\((https?://[^)]+)\)', app_url)
+                app_url = match.group(1) if match else "https://financeiro-comuna-sbc.streamlit.app"
+            elif not app_url:
+                app_url = "https://financeiro-comuna-sbc.streamlit.app"
 
-        complemento_link = f"?pagina=inscricao&evento={ev['id']}"
-        link_publico = f"{app_url}/{complemento_link}"
+            complemento_link = f"?pagina=inscricao&evento={ev['id']}"
+            link_publico = f"{app_url}/{complemento_link}"
 
-        col_link, col_acao = st.columns([3, 1])
-        with col_link:
-            st.text_input("Link público para inscrição", value=link_publico, key=f"link_evento_{ev['id']}", disabled=True)
-            st.markdown(f"🔗 [Testar página de inscrição deste evento]({link_publico})", unsafe_allow_html=True)
-            
-        with col_acao:
-            novo_status = "Encerrado" if status_evento == "Aberto" else "Aberto"
-            texto_botao = "🔒 Encerrar inscrições" if status_evento == "Aberto" else "🔓 Reabrir inscrições"
-            if st.button(texto_botao, key=f"alterar_status_evento_{ev['id']}", use_container_width=True):
-                resultado = sb_request("eventos", "PATCH", {"status": novo_status}, filtros={"id": f"eq.{ev['id']}"})
-                if resultado is not None:
-                    st.cache_data.clear()
-                    st.rerun()
-        st.markdown("---")
+            col_link, col_acao = st.columns([3, 1])
+            with col_link:
+                st.text_input("Link público para inscrição", value=link_publico, key=f"link_evento_{ev['id']}", disabled=True)
+                st.markdown(f"🔗 [Testar página de inscrição deste evento]({link_publico})", unsafe_allow_html=True)
+                
+            with col_acao:
+                novo_status = "Encerrado" if status_evento == "Aberto" else "Aberto"
+                texto_botao = "🔒 Encerrar inscrições" if status_evento == "Aberto" else "🔓 Reabrir inscrições"
+                if st.button(texto_botao, key=f"alterar_status_evento_{ev['id']}", use_container_width=True):
+                    resultado = sb_request("eventos", "PATCH", {"status": novo_status}, filtros={"id": f"eq.{ev['id']}"})
+                    if resultado is not None:
+                        st.cache_data.clear()
+                        st.rerun()
+            st.markdown("---")
 
 # ==========================================
-# ==========================================
-# INSCRIÇÕES E COMPROVANTES (COM BOLSÃO DE CRÉDITOS OFX)
+# INSCRIÇÕES E COMPROVANTES
 # ==========================================
 elif page == "Inscrições e Comprovantes":
     st.title("Inscrições, Comprovantes e Bolsão OFX")
@@ -2131,7 +2081,6 @@ elif page == "Inscrições e Comprovantes":
     if not eventos_db:
         st.info("Cadastre um evento primeiro em 'Painel de Eventos'.")
     else:
-        # Se for líder de evento logado, filtra apenas os eventos dele (se aplicável)
         usuario_atual = st.session_state.get("usuario_logado", {})
         if usuario_atual.get("perfil") == "Visão Eventos":
             eventos_visiveis = [e for e in eventos_db if str(e.get("lider_id")) == str(usuario_atual.get("id"))]
@@ -2179,7 +2128,6 @@ elif page == "Inscrições e Comprovantes":
                                     insc_id = participante_opcoes[part_sel]
                                     insc_obj = map_insc[insc_id]
                                     
-                                    # 1. Registra o pagamento na inscrição
                                     cat_evento_id = next((c['id'] for c in categorias_db if c['nome'] == 'Inscrições de Eventos'), None)
                                     novo_pag = sb_request("inscricao_pagamentos", "POST", {
                                         "inscricao_id": insc_id,
@@ -2191,10 +2139,8 @@ elif page == "Inscrições e Comprovantes":
                                     })
                                     
                                     if novo_pag is not None:
-                                        # 2. Atualiza status do crédito OFX para Vinculado
                                         sb_request("creditos_ofx", "PATCH", {"status": "Vinculado", "inscricao_id": insc_id}, filtros={"id": f"eq.{cred['id']}"})
                                         
-                                        # 3. Atualiza o total pago do participante
                                         novo_valor_pago = float(insc_obj.get('valor_pago') or 0) + float(cred['valor'])
                                         novo_status_p = "Completo" if novo_valor_pago >= float(insc_obj.get('valor_total') or 0) - 0.01 else "Parcial"
                                         sb_request("inscricoes", "PATCH", {"valor_pago": novo_valor_pago, "status_pagamento": novo_status_p}, filtros={"id": f"eq.{insc_id}"})
@@ -2279,7 +2225,6 @@ elif page == "Inscrições e Comprovantes":
                     st.markdown("<hr style='margin:6px 0;border-color:#E2E8F0;'>", unsafe_allow_html=True)
 
 # ==========================================
-# ==========================================
 # METAS E ORÇAMENTOS
 # ==========================================
 elif page == "Metas e Orçamentos":
@@ -2307,7 +2252,7 @@ elif page == "Metas e Orçamentos":
                 if metas_lista:
                     opcoes_metas = {f"{m['ano']} - {MESES_PT[int(m['mes'])-1]}": m['id'] for m in metas_lista}
                     meta_del = st.selectbox("Selecione a Meta", list(opcoes_metas.keys()))
-                    if st.button("Excluir Meta Selecionada", use_container_width=True):
+                    if st.button("Excluir Meta Selecionado", use_container_width=True):
                         sb_request("metas_mensais", "DELETE", filtros={"id": f"eq.{opcoes_metas[meta_del]}"})
                         st.cache_data.clear(); st.success("Excluída!"); time.sleep(1); st.rerun()
 
@@ -2352,9 +2297,6 @@ elif page == "Metas e Orçamentos":
             df_orc_view.columns = ['Ano', 'Categoria', 'Valor Orçado']
             st.dataframe(df_orc_view.sort_values('Ano'), use_container_width=True, hide_index=True)
 
-# ==========================================
-# CATEGORIAS
-# ==========================================
 # ==========================================
 # CATEGORIAS
 # ==========================================
@@ -2450,7 +2392,6 @@ elif page == "Analytics Financeiro":
             df_agrupado = df_filtrado.groupby(['mes_ano', 'tipo'])['valor'].sum().unstack(fill_value=0)
             df_agrupado = df_agrupado.sort_index()
 
-            # Garante que as colunas existam como listas/Series, mesmo se não houver dados no tipo
             if 'Entrada' not in df_agrupado.columns:
                 df_agrupado['Entrada'] = 0.0
             if 'Saída' not in df_agrupado.columns:
@@ -2464,7 +2405,6 @@ elif page == "Analytics Financeiro":
                 metas_map = df_metas.set_index('mes_ano').to_dict('index')
 
             fig = go.Figure()
-            # Agora chamamos a coluna diretamente em vez de usar .get()
             fig.add_bar(x=df_agrupado.index, y=df_agrupado['Entrada'], name='Entradas', marker_color='#2563EB')
             fig.add_bar(x=df_agrupado.index, y=df_agrupado['Saída'], name='Saídas', marker_color='#EF4444')
             
@@ -2517,9 +2457,7 @@ elif page == "Analytics Financeiro":
             st.info("Nenhuma movimentação vinculada a eventos ainda.")
 
 # ==========================================
-# ==========================================
-# ==========================================
-# EXPORTAR CONTABILIDADE (COM DOWNLOAD DE ANEXOS EM ZIP)
+# EXPORTAR CONTABILIDADE
 # ==========================================
 elif page == "Exportar Contabilidade":
     st.title("Exportar para Contabilidade")
@@ -2539,9 +2477,6 @@ elif page == "Exportar Contabilidade":
             idx_mes = MESES_PT.index(mes_exp) + 1
             dff = dff[dff['data_competencia'].dt.month == idx_mes]
 
-        # -----------------------------
-        # INÍCIO DO CRUZAMENTO DE/PARA
-        # -----------------------------
         categorias = carregar_categorias()
         contas = carregar("contas_bancarias")
         eventos = carregar("eventos")
@@ -2566,9 +2501,6 @@ elif page == "Exportar Contabilidade":
                             'Valor (R$)', 'Status']
         
         st.dataframe(exportar, use_container_width=True, hide_index=True)
-        # -----------------------------
-        # FIM DO CRUZAMENTO DE/PARA
-        # -----------------------------
 
         col_d1, col_d2, col_d3 = st.columns(3)
         
@@ -2582,30 +2514,38 @@ elif page == "Exportar Contabilidade":
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
                                
         with col_d3:
-            import zipfile
-            
-            # Botão para baixar Pacote ZIP (Excel + Anexos do Mês)
             if st.button("📦 Baixar Pacote ZIP (Excel + Anexos)", use_container_width=True):
-                with st.spinner("Empacotando lançamentos e baixando anexos..."):
+                with st.spinner("Empacotando lançamentos e baixando anexos (isso pode demorar dependendo da quantidade de notas)..."):
                     zip_buffer = io.BytesIO()
                     
+                    todos_anexos_exp = sb_request("lancamento_anexos", "GET")
+                    mapa_anexos_exp = {}
+                    if todos_anexos_exp:
+                        for ax in todos_anexos_exp:
+                            l_id = ax['lancamento_id']
+                            if l_id not in mapa_anexos_exp:
+                                mapa_anexos_exp[l_id] = []
+                            mapa_anexos_exp[l_id].append(ax)
+
                     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                        # 1. Adiciona a planilha Excel dentro do ZIP
                         zip_file.writestr(f"financeiro_{ano_exp}_{mes_exp}.xlsx", excel_data)
                         
-                        # 2. Varre os lançamentos filtrados para coletar e baixar os anexos do Storage
                         anexos_adicionados = 0
                         for _, row_orig in dff.iterrows():
-                            path_anexo = row_orig.get('url_anexo')
-                            if path_anexo and isinstance(path_anexo, str) and path_anexo.strip():
+                            row_id = str(row_orig['id'])
+                            anexos_row = mapa_anexos_exp.get(row_id, [])
+                            
+                            if not anexos_row and row_orig.get('url_anexo') and isinstance(row_orig.get('url_anexo'), str) and row_orig.get('url_anexo').strip():
+                                anexos_row = [{'url_storage': row_orig.get('url_anexo'), 'nome_original': row_orig.get('url_anexo').split('/')[-1]}]
+                            
+                            for ax in anexos_row:
+                                path_anexo = ax['url_storage']
                                 try:
-                                    # Baixa o arquivo binário diretamente do bucket 'comprovantes' do Supabase
                                     file_res = supabase.storage.from_("comprovantes").download(path_anexo)
                                     if file_res:
-                                        # Cria um nome de arquivo limpo para dentro do ZIP
-                                        nome_original = path_anexo.split('/')[-1]
+                                        nome_original = ax.get('nome_original') or path_anexo.split('/')[-1]
                                         data_str = pd.to_datetime(row_orig['data_competencia']).strftime('%Y%m%d')
-                                        nome_no_zip = f"comprovantes/{data_str}_{nome_original}"
+                                        nome_no_zip = f"comprovantes/{data_str}_{row_id[:5]}_{nome_original}"
                                         
                                         zip_file.writestr(nome_no_zip, file_res)
                                         anexos_adicionados += 1
