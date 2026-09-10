@@ -545,9 +545,10 @@ if perfil_ativo == "Visão Total Tesouraria":
 page = st.session_state.page
 
 # ==========================================
+# ==========================================
 # RESUMO DO DIA 
 # ==========================================
-if page == "Resumo do Dia":
+elif page == "Resumo do Dia":
     st.markdown("""
         <style>
         div.stMainBlockContainer, div[data-testid="stVerticalBlock"] {
@@ -650,6 +651,35 @@ if page == "Resumo do Dia":
         st.warning(f"⚠️ Atenção: Existem **{len(recorrencias_expirando)}** lançamentos recorrentes com data final de recorrência programada para este mês de {MESES_PT[hoje.month-1].lower()}. Verifique a necessidade de renovação.")
 
     st.markdown("---")
+    
+    # ----------------------------------------------------
+    # BLOCO NOVO: APROVAÇÃO DE CRÉDITOS MANUAIS (CENTAVOS)
+    # ----------------------------------------------------
+    solicitacoes_pendentes_credito = sb_request("creditos_ofx", "GET", filtros={"status": "eq.Pendente Aprovação"}) or []
+    if solicitacoes_pendentes_credito:
+        st.subheader("🔔 Solicitações de Liberação de Crédito para Eventos")
+        st.info("Líderes de eventos informaram que as pessoas abaixo pagaram sem os centavos de identificação. Verifique se o valor entrou em sua conta e aprove para liberar o crédito no Bolsão do evento.")
+        for solic in solicitacoes_pendentes_credito:
+            ev_nome = eventos_por_id.get(str(solic.get('evento_id')), {}).get('nome', 'Evento Desconhecido')
+            with st.container(border=True):
+                col_s1, col_s2, col_s3 = st.columns([3, 1, 1])
+                col_s1.write(f"**{ev_nome}** — {solic.get('descricao_bancaria')}")
+                col_s1.caption(f"Data informada do pagamento: {pd.to_datetime(solic['data']).strftime('%d/%m/%Y')} | Após aprovar aqui, lembre-se de ir na Tesouraria e mudar a categoria do recebimento original para Inscrição de Evento.")
+                col_s2.write(f"**{fmt_moeda(solic['valor'])}**")
+                
+                b_ap, b_rej = col_s3.columns(2)
+                if b_ap.button("✅ Aprovar", key=f"aprov_solic_{solic['id']}", help="Liberar no Bolsão"):
+                    sb_request("creditos_ofx", "PATCH", {"status": "Disponível"}, filtros={"id": f"eq.{solic['id']}"})
+                    st.cache_data.clear()
+                    st.success("Aprovado! Crédito liberado no bolsão do evento.")
+                    st.rerun()
+                if b_rej.button("❌ Rejeitar", key=f"rej_solic_{solic['id']}"):
+                    sb_request("creditos_ofx", "PATCH", {"status": "Rejeitado"}, filtros={"id": f"eq.{solic['id']}"})
+                    st.cache_data.clear()
+                    st.rerun()
+        st.markdown("---")
+    # ----------------------------------------------------
+
     coluna_contas, coluna_comprovantes = st.columns(2)
 
     with coluna_contas:
@@ -702,7 +732,6 @@ if page == "Resumo do Dia":
             if st.button("Ir para Inscrições e Comprovantes →", key="resumo_ir_comprovantes", use_container_width=True):
                 st.session_state.page = "Inscrições e Comprovantes"
                 st.rerun()
-
 # ==========================================
 # VISÃO CONSOLIDADA
 # ==========================================
