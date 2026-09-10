@@ -549,8 +549,13 @@ page = st.session_state.page
 # ==========================================
 # RESUMO DO DIA 
 # ==========================================
-elif page == "Resumo do Dia":
-    st.markdown(""")
+page = st.session_state.page
+
+# ==========================================
+# RESUMO DO DIA 
+# ==========================================
+if page == "Resumo do Dia":
+    st.markdown("""
         <style>
         div.stMainBlockContainer, div[data-testid="stVerticalBlock"] {
             padding-top: 0rem !important;
