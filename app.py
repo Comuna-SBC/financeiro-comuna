@@ -550,7 +550,7 @@ page = st.session_state.page
 # RESUMO DO DIA 
 # ==========================================
 elif page == "Resumo do Dia":
-    st.markdown("""
+    st.markdown(""")
         <style>
         div.stMainBlockContainer, div[data-testid="stVerticalBlock"] {
             padding-top: 0rem !important;
