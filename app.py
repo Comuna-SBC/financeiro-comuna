@@ -2054,7 +2054,6 @@ elif page == "Painel de Eventos":
     else:
         inscricoes_all = carregar("inscricoes")
         pagamentos_all = carregar("inscricao_pagamentos")
-        lancamentos_all = carregar("lancamentos") or []
 
         for ev in eventos_atualizados:
             tem_part = ev.get('tem_participantes', True)
@@ -2065,7 +2064,7 @@ elif page == "Painel de Eventos":
                 inscricoes_evento = [i for i in inscricoes_all if str(i.get("evento_id")) == str(ev.get("id"))]
                 ids_inscricoes_evento = {str(i.get("id")) for i in inscricoes_evento}
                 pagamentos_evento = [p for p in pagamentos_all if str(p.get("inscricao_id")) in ids_inscricoes_evento]
-                pagamentos_pendentes = [p for p in pagamentos_evento if p.get("status") == "Pendente"]
+                pagamentos_pendentes = [p for p in pagamentos_evento if p.get("status"] == "Pendente"]
                 inscricoes_quitadas = [i for i in inscricoes_evento if i.get("status_pagamento") == "Completo"]
                 inscricoes_parciais = [i for i in inscricoes_evento if i.get("status_pagamento") == "Parcial"]
 
@@ -2080,17 +2079,16 @@ elif page == "Painel de Eventos":
                 info_participantes = f"👥 {total_inscritos} inscritos &nbsp;•&nbsp; {vagas_restantes} vagas restantes &nbsp;•&nbsp; ✅ {len(inscricoes_quitadas)} quitados &nbsp;•&nbsp; 🟡 {len(inscricoes_parciais)} parciais"
                 info_alertas = f'<p style="color:#D97706;margin:4px 0;font-weight:600;">⏳ {len(pagamentos_pendentes)} comprovantes aguardando aprovação</p>' if pagamentos_pendentes else ''
             else:
-                # Lógica para Campanha (busca lançamentos associados ao centro de custo)
-                nome_cc = ev.get('centro_custo') or ev.get('nome')
-                arrecadacao_campanha = sum(float(l['valor']) for l in lancamentos_all if l.get('centro_custo') == nome_cc and l.get('tipo') == 'Entrada' and l.get('status') == 'Concluído')
-                total_arrecadado = arrecadacao_campanha
-                saldo_a_receber = max(float(ev.get('valor_inscricao') or 0) - total_arrecadado, 0) # Neste caso, valor_inscricao age como a Meta Alvo
+                creditos_ev = sb_request("creditos_ofx", "GET", filtros={"evento_id": f"eq.{ev['id']}"}) or []
+                total_arrecadado = sum(float(c.get("valor") or 0) for c in creditos_ev if c.get("status") == "Vinculado")
+                meta_alvo = float(ev.get('valor_inscricao') or 0)
+                saldo_a_receber = max(meta_alvo - total_arrecadado, 0)
                 
-                info_participantes = f"🎯 Campanha de Arrecadação Pública (Não requer inscritos)"
+                info_participantes = "🎯 Campanha de Arrecadação Pública (Não requer inscritos)"
                 info_alertas = ""
                 parcelamento_texto = "Doação Espontânea"
 
-            st.markdown(f"""
+            card_html = f"""
             <div style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:14px;padding:20px;margin-bottom:12px;">
                 <h4 style="margin-top:0;">{ev.get('nome', 'Evento')} <span style="font-size:0.8rem;color:{cor_status};">● {status_evento}</span></h4>
                 <p style="color:#475569;margin:4px 0;">📅 {ev.get('data_evento') or '—'} &nbsp;•&nbsp; 💰 {fmt_moeda(ev.get('valor_inscricao'))} {'por pessoa' if tem_part else '(Alvo Global)'}</p>
@@ -2099,7 +2097,8 @@ elif page == "Painel de Eventos":
                 {info_alertas}
                 <p style="color:#059669;margin:4px 0;font-weight:600;">💵 Arrecadado: {fmt_moeda(total_arrecadado)} &nbsp;•&nbsp; {'A receber' if tem_part else 'Faltam'}: {fmt_moeda(saldo_a_receber)}</p>
             </div>
-            """, unsafe_allow_html=True)
+            """
+            st.markdown(card_html, unsafe_allow_html=True)
 
             if tem_part:
                 app_url = st.secrets.get("APP_URL", "").rstrip("/")
