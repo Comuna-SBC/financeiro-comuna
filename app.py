@@ -2088,16 +2088,17 @@ elif page == "Painel de Eventos":
                 info_alertas = ""
                 parcelamento_texto = "Doação Espontânea"
 
-            card_html = f"""
-            <div style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:14px;padding:20px;margin-bottom:12px;">
-                <h4 style="margin-top:0;">{ev.get('nome', 'Evento')} <span style="font-size:0.8rem;color:{cor_status};">● {status_evento}</span></h4>
-                <p style="color:#475569;margin:4px 0;">📅 {ev.get('data_evento') or '—'} &nbsp;•&nbsp; 💰 {fmt_moeda(ev.get('valor_inscricao'))} {'por pessoa' if tem_part else '(Alvo Global)'}</p>
-                <p style="color:#475569;margin:4px 0;">💳 {parcelamento_texto} &nbsp;•&nbsp; 🔑 Pix: {ev.get('chave_pix') or '—'}</p>
-                <p style="color:#475569;margin:4px 0;">{info_participantes}</p>
-                {info_alertas}
-                <p style="color:#059669;margin:4px 0;font-weight:600;">💵 Arrecadado: {fmt_moeda(total_arrecadado)} &nbsp;•&nbsp; {'A receber' if tem_part else 'Faltam'}: {fmt_moeda(saldo_a_receber)}</p>
-            </div>
-            """
+            # O HTML foi envelopado sem quebras de linha com indentação para evitar bugs do Markdown
+            card_html = (
+                f'<div style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:14px;padding:20px;margin-bottom:12px;">'
+                f'<h4 style="margin-top:0;">{ev.get("nome", "Evento")} <span style="font-size:0.8rem;color:{cor_status};">● {status_evento}</span></h4>'
+                f'<p style="color:#475569;margin:4px 0;">📅 {ev.get("data_evento") or "—"} &nbsp;•&nbsp; 💰 {fmt_moeda(ev.get("valor_inscricao"))} {"por pessoa" if tem_part else "(Alvo Global)"}</p>'
+                f'<p style="color:#475569;margin:4px 0;">💳 {parcelamento_texto} &nbsp;•&nbsp; 🔑 Pix: {ev.get("chave_pix") or "—"}</p>'
+                f'<p style="color:#475569;margin:4px 0;">{info_participantes}</p>'
+                f'{info_alertas}'
+                f'<p style="color:#059669;margin:4px 0;font-weight:600;">💵 Arrecadado: {fmt_moeda(total_arrecadado)} &nbsp;•&nbsp; {"A receber" if tem_part else "Faltam"}: {fmt_moeda(saldo_a_receber)}</p>'
+                f'</div>'
+            )
             st.markdown(card_html, unsafe_allow_html=True)
 
             if tem_part:
