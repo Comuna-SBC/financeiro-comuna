@@ -2117,6 +2117,9 @@ elif page == "Painel de Eventos":
                 if codigo_centavos:
                     texto_whatsapp += f"\n\n*Importante:* Adicione o código (*,{codigo_centavos}*) no final do valor da sua doação. Exemplo: para doar R$ 50, transfira R$ 50,{codigo_centavos}. Isso nos ajuda a identificar sua doação de forma rápida e automática!"
 
+            # Chamada de ação que conecta a primeira mensagem com a segunda (a chave pix isolada)
+            texto_whatsapp += "\n\nUse o código PIX abaixo para fazer sua transferência:"
+
             # Extração da Chave Pix Pura
             chave_pix_pura = ev.get('chave_pix') or '—'
 
