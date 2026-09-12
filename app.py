@@ -2139,8 +2139,13 @@ elif page == "Painel de Eventos":
             
             with col_meio:
                 with st.popover("📱 Divulgar no WhatsApp", use_container_width=True):
-                    st.markdown("**Copie o texto pronto abaixo (passe o mouse na caixa para o ícone de cópia):**")
+                    st.markdown("**Copie o texto pronto ou envie diretamente:**")
                     st.code(texto_whatsapp, language="text")
+                    
+                    import urllib.parse
+                    texto_url = urllib.parse.quote(texto_whatsapp)
+                    link_wa = f"https://api.whatsapp.com/send?text={texto_url}"
+                    st.link_button("💬 Enviar direto pelo WhatsApp", link_wa, use_container_width=True)
                     
             with col_dir:
                 novo_status = "Encerrado" if status_evento == "Aberto" else "Aberto"
