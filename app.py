@@ -2095,10 +2095,14 @@ elif page == "Painel de Eventos":
                 info_participantes = f"👥 {total_inscritos} inscritos &nbsp;•&nbsp; {vagas_restantes} vagas restantes &nbsp;•&nbsp; ✅ {len(inscricoes_quitadas)} quitados &nbsp;•&nbsp; 🟡 {len(inscricoes_parciais)} parciais"
                 info_alertas = f'<p style="color:#D97706;margin:4px 0;font-weight:600;">⏳ {len(pagamentos_pendentes)} comprovantes aguardando aprovação</p>' if pagamentos_pendentes else ''
 
-                # Geração do texto WhatsApp para Evento (Chave PIX isolada para facilitar cópia)
-                texto_whatsapp = f"Olá! As inscrições para o *{ev.get('nome')}* estão abertas!\n\n*Data:* {ev.get('data_evento') or '—'}\n*Valor:* {fmt_moeda(ev.get('valor_inscricao'))} ({parcelamento_texto})\n\n*Faça sua inscrição pelo link:*\n{link_publico}\n\n*Faça seu Pix para a chave abaixo* (copie a próxima linha):\n{ev.get('chave_pix') or '—'}"
+                # Geração do texto WhatsApp para Evento
+                texto_whatsapp = f"Olá! As inscrições para o *{ev.get('nome')}* estão abertas!\n\n*Data:* {ev.get('data_evento') or '—'}\n*Valor:* {fmt_moeda(ev.get('valor_inscricao'))} ({parcelamento_texto})\n\n*Faça sua inscrição pelo link:*\n{link_publico}"
+                
                 if codigo_centavos:
                     texto_whatsapp += f"\n\n*Atenção:* Ao fazer o pagamento via Pix, adicione nossos centavos (*,{codigo_centavos}*) no valor final. Exemplo: R$ {int(ev.get('valor_inscricao') or 0)},{codigo_centavos}. Isso garante a confirmação automática no sistema!"
+                
+                # A chave Pix DEVE ser o último item absoluto do texto para o WhatsApp permitir cópia isolada
+                texto_whatsapp += f"\n\n👇 *Copie a chave Pix abaixo* 👇\n\n{ev.get('chave_pix') or '—'}"
 
             else:
                 creditos_ev = sb_request("creditos_ofx", "GET", filtros={"evento_id": f"eq.{ev['id']}"}) or []
@@ -2110,10 +2114,14 @@ elif page == "Painel de Eventos":
                 info_alertas = ""
                 parcelamento_texto = "Doação Espontânea"
 
-                # Geração do texto WhatsApp para Campanha (Chave PIX isolada para facilitar cópia)
-                texto_whatsapp = f"Olá! Nossa campanha *{ev.get('nome')}* está ativa!\n\nNossa meta é arrecadar *{fmt_moeda(ev.get('valor_inscricao'))}* e toda ajuda faz muita diferença!\n\n*Para contribuir, faça seu Pix para a chave abaixo* (copie a próxima linha):\n{ev.get('chave_pix') or '—'}"
+                # Geração do texto WhatsApp para Campanha
+                texto_whatsapp = f"Olá! Nossa campanha *{ev.get('nome')}* está ativa!\n\nNossa meta é arrecadar *{fmt_moeda(ev.get('valor_inscricao'))}* e toda ajuda faz muita diferença!"
+                
                 if codigo_centavos:
                     texto_whatsapp += f"\n\n*Importante:* Adicione o código (*,{codigo_centavos}*) no final do valor da sua doação. Exemplo: para doar R$ 50, transfira R$ 50,{codigo_centavos}. Isso nos ajuda a identificar sua doação de forma rápida e automática!"
+                
+                # A chave Pix DEVE ser o último item absoluto do texto para o WhatsApp permitir cópia isolada
+                texto_whatsapp += f"\n\n👇 *Copie a chave Pix abaixo* 👇\n\n{ev.get('chave_pix') or '—'}"
 
             # O HTML foi envelopado sem quebras de linha com indentação
             card_html = (
