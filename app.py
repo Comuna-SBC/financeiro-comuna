@@ -2099,7 +2099,7 @@ elif page == "Painel de Eventos":
                 texto_whatsapp = f"Olá! As inscrições para o *{ev.get('nome')}* estão abertas!\n\n*Data:* {ev.get('data_evento') or '—'}\n*Valor:* {fmt_moeda(ev.get('valor_inscricao'))} ({parcelamento_texto})\n\n*Faça sua inscrição pelo link:*\n{link_publico}"
                 
                 if codigo_centavos:
-                    texto_whatsapp += f"\n\n*Atenção:* Ao fazer o pagamento via Pix, adicione nossos centavos {codigo_centavos} no valor final. Exemplo: R$ {int(ev.get('valor_inscricao') or 0)},{codigo_centavos}. Isso garante a confirmação automática no sistema!"
+                    texto_whatsapp += f"\n\n*Atenção:* Ao fazer o pagamento via Pix, adicione {codigo_centavos} no valor final. Exemplo: R$ {int(ev.get('valor_inscricao') or 0)},{codigo_centavos}. Isso garante a confirmação automática no sistema!"
 
             else:
                 creditos_ev = sb_request("creditos_ofx", "GET", filtros={"evento_id": f"eq.{ev['id']}"}) or []
