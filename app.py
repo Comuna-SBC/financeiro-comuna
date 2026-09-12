@@ -2095,13 +2095,11 @@ elif page == "Painel de Eventos":
                 info_participantes = f"👥 {total_inscritos} inscritos &nbsp;•&nbsp; {vagas_restantes} vagas restantes &nbsp;•&nbsp; ✅ {len(inscricoes_quitadas)} quitados &nbsp;•&nbsp; 🟡 {len(inscricoes_parciais)} parciais"
                 info_alertas = f'<p style="color:#D97706;margin:4px 0;font-weight:600;">⏳ {len(pagamentos_pendentes)} comprovantes aguardando aprovação</p>' if pagamentos_pendentes else ''
 
-                # Geração do texto WhatsApp para Evento (Totalmente sem emojis invisíveis/quebrados)
+                # Geração do texto WhatsApp principal para Evento
                 texto_whatsapp = f"Olá! As inscrições para o *{ev.get('nome')}* estão abertas!\n\n*Data:* {ev.get('data_evento') or '—'}\n*Valor:* {fmt_moeda(ev.get('valor_inscricao'))} ({parcelamento_texto})\n\n*Faça sua inscrição pelo link:*\n{link_publico}"
                 
                 if codigo_centavos:
                     texto_whatsapp += f"\n\n*Atenção:* Ao fazer o pagamento via Pix, adicione nossos centavos (*,{codigo_centavos}*) no valor final. Exemplo: R$ {int(ev.get('valor_inscricao') or 0)},{codigo_centavos}. Isso garante a confirmação automática no sistema!"
-                
-                texto_whatsapp += f"\n\n*Copie a chave Pix abaixo:*\n\n{ev.get('chave_pix') or '—'}"
 
             else:
                 creditos_ev = sb_request("creditos_ofx", "GET", filtros={"evento_id": f"eq.{ev['id']}"}) or []
@@ -2113,13 +2111,14 @@ elif page == "Painel de Eventos":
                 info_alertas = ""
                 parcelamento_texto = "Doação Espontânea"
 
-                # Geração do texto WhatsApp para Campanha (Totalmente sem emojis invisíveis/quebrados)
+                # Geração do texto WhatsApp principal para Campanha
                 texto_whatsapp = f"Olá! Nossa campanha *{ev.get('nome')}* está ativa!\n\nNossa meta é arrecadar *{fmt_moeda(ev.get('valor_inscricao'))}* e toda ajuda faz muita diferença!"
                 
                 if codigo_centavos:
                     texto_whatsapp += f"\n\n*Importante:* Adicione o código (*,{codigo_centavos}*) no final do valor da sua doação. Exemplo: para doar R$ 50, transfira R$ 50,{codigo_centavos}. Isso nos ajuda a identificar sua doação de forma rápida e automática!"
-                
-                texto_whatsapp += f"\n\n*Copie a chave Pix abaixo:*\n\n{ev.get('chave_pix') or '—'}"
+
+            # Extração da Chave Pix Pura
+            chave_pix_pura = ev.get('chave_pix') or '—'
 
             # O HTML foi envelopado sem quebras de linha com indentação
             card_html = (
@@ -2145,13 +2144,20 @@ elif page == "Painel de Eventos":
             
             with col_meio:
                 with st.popover("📱 Divulgar no WhatsApp", use_container_width=True):
-                    st.markdown("**Dica:** Envie o texto abaixo, aperte 'Enviar' no WhatsApp e, em seguida, mande apenas a chave Pix na próxima mensagem para facilitar a cópia!")
-                    st.code(texto_whatsapp, language="text")
-                    
                     import urllib.parse
-                    texto_url = urllib.parse.quote(texto_whatsapp)
-                    link_wa = f"https://wa.me/?text={texto_url}"
-                    st.link_button("💬 Enviar direto pelo WhatsApp", link_wa, use_container_width=True)
+                    st.caption("O WhatsApp não permite enviar duas mensagens separadas com um único clique. Siga os 2 passos abaixo:")
+                    
+                    st.markdown("**Passo 1: Enviar Instruções**")
+                    st.code(texto_whatsapp, language="text")
+                    link_wa_texto = f"https://wa.me/?text={urllib.parse.quote(texto_whatsapp)}"
+                    st.link_button("💬 Enviar Instruções", link_wa_texto, use_container_width=True)
+                    
+                    st.markdown("---")
+                    
+                    st.markdown("**Passo 2: Enviar APENAS a Chave Pix** (para a pessoa conseguir copiar no celular)")
+                    st.code(chave_pix_pura, language="text")
+                    link_wa_pix = f"https://wa.me/?text={urllib.parse.quote(chave_pix_pura)}"
+                    st.link_button("🔑 Enviar só a Chave Pix", link_wa_pix, use_container_width=True)
                     
             with col_dir:
                 novo_status = "Encerrado" if status_evento == "Aberto" else "Aberto"
