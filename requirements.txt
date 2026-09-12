@@ -6,3 +6,5 @@ plotly
 requests
 openpyxl
 extra-streamlit-components
+qrcode
+extra-streamlit-components
