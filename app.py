@@ -3,6 +3,7 @@ from supabase import create_client
 import pandas as pd
 from PIL import Image
 import io
+from io import BytesIO
 from datetime import date
 import time
 import plotly.express as px
@@ -10,6 +11,10 @@ import plotly.graph_objects as go
 import requests
 import re
 import zipfile
+import datetime
+import extra_streamlit_components as stx
+import qrcode
+import urllib.parse
 
 # ==========================================
 # CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM
@@ -93,6 +98,7 @@ st.markdown("""
 # ==========================================
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
+SUPABASE_SERVICE_KEY = st.secrets.get("SUPABASE_SERVICE_KEY", SUPABASE_KEY)
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     st.error("⚠️ Credenciais do Supabase não configuradas nos Secrets.")
@@ -101,9 +107,10 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def sb_request(tabela, metodo="GET", payload=None, filtros=None):
+    chave_ativa = SUPABASE_SERVICE_KEY if st.session_state.get("autenticado") else SUPABASE_KEY
     headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "apikey": chave_ativa,
+        "Authorization": f"Bearer {chave_ativa}",
         "Content-Type": "application/json",
         "Prefer": "return=representation"
     }
@@ -326,19 +333,20 @@ def pagina_inscricao_publica():
     if not eventos_abertos:
         st.info("Não há eventos com inscrições abertas no momento.")
         return
+    # [Restante do seu código de renderização do formulário público de inscrição fica aqui]
 
-    import datetime
-import extra_streamlit_components as stx
-
+# ==========================================
+# ROTAS E LOGIN
+# ==========================================
 qp = st.query_params
 
-# Página Pública de Inscrição
+# Rota 1: Página Pública de Inscrição
 if qp.get("pagina") == "inscricao":
     st.markdown("<style>[data-testid='stSidebar'], [data-testid='collapsedControl'] {display:none;}</style>", unsafe_allow_html=True)
     pagina_inscricao_publica()
     st.stop()
 
-# Tela de Redefinição de Senha (Link do e-mail)
+# Rota 2: Tela de Redefinição de Senha
 if qp.get("pagina") == "atualizar_senha":
     st.markdown("<style>[data-testid='stSidebar'], [data-testid='collapsedControl'] {display:none;}</style>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -356,7 +364,7 @@ if qp.get("pagina") == "atualizar_senha":
                     st.error("❌ Ocorreu um erro. O link pode ser inválido ou ter expirado.")
     st.stop()
 
-# Gerenciador de Cookies (Manter conectado por 30 dias)
+# Gerenciador de Cookies
 @st.cache_resource
 def get_cookie_manager():
     return stx.CookieManager()
@@ -372,7 +380,7 @@ if "autenticado" not in st.session_state:
         st.session_state["autenticado"] = False
         st.session_state["auth_id"] = None
 
-# Tela de Login Principal
+# Tela de Login
 if not st.session_state["autenticado"]:
     st.markdown("<style>[data-testid='stSidebar'] {display:none;}</style>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
