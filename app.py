@@ -2064,7 +2064,7 @@ elif page == "Painel de Eventos":
                 inscricoes_evento = [i for i in inscricoes_all if str(i.get("evento_id")) == str(ev.get("id"))]
                 ids_inscricoes_evento = {str(i.get("id")) for i in inscricoes_evento}
                 pagamentos_evento = [p for p in pagamentos_all if str(p.get("inscricao_id")) in ids_inscricoes_evento]
-                pagamentos_pendentes = [p for p in pagamentos_evento if p.get("status"] == "Pendente"]
+                pagamentos_pendentes = [p for p in pagamentos_evento if p.get("status") == "Pendente"]
                 inscricoes_quitadas = [i for i in inscricoes_evento if i.get("status_pagamento") == "Completo"]
                 inscricoes_parciais = [i for i in inscricoes_evento if i.get("status_pagamento") == "Parcial"]
 
