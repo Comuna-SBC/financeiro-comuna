@@ -327,223 +327,125 @@ def pagina_inscricao_publica():
         st.info("Não há eventos com inscrições abertas no momento.")
         return
 
-    qp = st.query_params
-    evento_id_param = qp.get("evento")
-    evento_travado = next((e for e in eventos_abertos if str(e["id"]) == str(evento_id_param)), None) if evento_id_param else None
-
-    if evento_travado:
-        evento = evento_travado
-        st.info(f"Você está se inscrevendo em: **{evento['nome']}**")
-    else:
-        nomes = [e["nome"] for e in eventos_abertos]
-        evento_sel_nome = st.selectbox("Selecione o Evento", nomes)
-        evento = next(e for e in eventos_abertos if e["nome"] == evento_sel_nome)
-
-    parcela_info = f"<p style='margin:0;color:#475569;'>📆 Pagamento em até <b>{evento.get('numero_parcelas',1)}x</b></p>" if evento.get("permite_parcelamento") else ""
-    st.markdown(f"""
-    <div style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:14px;padding:20px;margin-bottom:20px;">
-        <p style="margin:0;color:#475569;">📅 Data: <b>{evento.get('data_evento','—')}</b></p>
-        <p style="margin:0;color:#475569;">💰 Valor Total: <b>{fmt_moeda(evento.get('valor_inscricao'))}</b></p>
-        <p style="margin:0;color:#475569;">🔑 Chave Pix: <b>{evento.get('chave_pix','—')}</b></p>
-        {parcela_info}
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("### 🔎 Informe seu CPF para começar")
-    cpf_busca = st.text_input("CPF", key="cpf_busca", placeholder="Somente números")
-    cpf_limpo_busca = somente_digitos(cpf_busca)
-
-    inscricao_existente = None
-    if len(cpf_limpo_busca) == 11:
-        todas_insc = carregar("inscricoes")
-        inscricao_existente = next(
-            (i for i in todas_insc if i.get("evento_id") == evento["id"] and somente_digitos(i.get("cpf", "")) == cpf_limpo_busca),
-            None
-        )
-
-    if inscricao_existente:
-        _painel_pagamentos_participante(inscricao_existente, evento)
-        return
-
-    if cpf_limpo_busca and len(cpf_limpo_busca) == 11:
-        st.caption("CPF não encontrado para este evento — preencha os dados abaixo para se inscrever.")
-
-    with st.form("form_inscricao_publica", clear_on_submit=False):
-        nome = st.text_input("Nome completo")
-        cpf = st.text_input("CPF", value=cpf_busca or "", placeholder="Somente números")
-        contato = st.text_input("Telefone / WhatsApp")
-        enviar = st.form_submit_button("Criar Inscrição", use_container_width=True)
-        if enviar:
-            cpf_limpo = somente_digitos(cpf)
-            if not nome or not contato or not cpf_valido(cpf_limpo):
-                st.warning("Preencha nome, contato e um CPF válido.")
-            else:
-                todas_insc = carregar("inscricoes")
-                duplicado = any(
-                    i.get("evento_id") == evento["id"] and somente_digitos(i.get("cpf", "")) == cpf_limpo
-                    for i in todas_insc
-                )
-                if duplicado:
-                    st.error("Este CPF já está inscrito neste evento. Digite o CPF no campo acima para carregar sua inscrição e enviar o comprovante.")
-                else:
-                    nova = sb_request("inscricoes", "POST", {
-                        "evento_id": evento["id"],
-                        "nome_participante": nome,
-                        "contato": contato,
-                        "cpf": cpf_limpo,
-                        "valor_total": float(evento.get("valor_inscricao") or 0),
-                        "valor_pago": 0,
-                        "status_pagamento": "Pendente"
-                    })
-                    if nova is not None:
-                        st.cache_data.clear()
-                        st.success("✅ Inscrição criada! Agora envie o comprovante do pagamento abaixo.")
-                        st.session_state["cpf_busca"] = cpf_limpo
-                        st.rerun()
-                    else:
-                        st.error("Não foi possível criar a inscrição. Verifique as mensagens de erro acima.")
-
-def _painel_pagamentos_participante(inscricao, evento):
-    valor_total = float(inscricao.get("valor_total") or 0)
-    valor_pago = float(inscricao.get("valor_pago") or 0)
-    saldo = max(round(valor_total - valor_pago, 2), 0)
-
-    st.markdown(f"### 👤 {inscricao['nome_participante']}")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Valor Total", fmt_moeda(valor_total))
-    c2.metric("Já Pago (aprovado)", fmt_moeda(valor_pago))
-    c3.metric("Saldo Restante", fmt_moeda(saldo))
-    st.progress(min(valor_pago / valor_total, 1.0) if valor_total > 0 else 0.0)
-
-    pagamentos = [p for p in carregar("inscricao_pagamentos") if p.get("inscricao_id") == inscricao["id"]]
-    if pagamentos:
-        st.markdown("#### Comprovantes enviados")
-        for p in sorted(pagamentos, key=lambda x: x.get("numero_parcela", 1)):
-            emoji = {"Pendente": "⏳", "Aprovado": "✅", "Rejeitado": "❌"}.get(p["status"], "")
-            st.write(f"{emoji} Parcela {p.get('numero_parcela',1)} — {fmt_moeda(p.get('valor'))} — {p['status']}")
-
-    if saldo <= 0.01:
-        st.success("🎉 Inscrição totalmente paga. Nenhum novo comprovante é necessário.")
-        return
-
-    st.markdown("#### 📎 Enviar novo comprovante")
-    proxima_parcela = len(pagamentos) + 1
-    parcelas_totais = evento.get("numero_parcelas") or 1
-    parcelas_restantes = max(parcelas_totais - len(pagamentos), 1) if evento.get("permite_parcelamento") else 1
-    sugestao = min(round(saldo / parcelas_restantes, 2), saldo)
-
-    with st.form("form_novo_comprovante", clear_on_submit=True):
-        valor_parcela = st.number_input(
-            "Valor pago nesta parcela (R$)", min_value=0.01, max_value=float(saldo),
-            value=float(sugestao if sugestao > 0 else saldo), format="%.2f"
-        )
-        comprovante = st.file_uploader("Comprovante do Pix", type=['png', 'jpg', 'jpeg', 'pdf'])
-        enviar_pg = st.form_submit_button("Enviar Comprovante", use_container_width=True)
-        if enviar_pg:
-            if not comprovante:
-                st.warning("Anexe o comprovante.")
-            else:
-                url_comp = comprimir_e_fazer_upload(comprovante, pasta="eventos")
-                sucesso = sb_request("inscricao_pagamentos", "POST", {
-                    "inscricao_id": inscricao["id"],
-                    "numero_parcela": proxima_parcela,
-                    "valor": float(valor_parcela),
-                    "comprovante_url": url_comp,
-                    "status": "Pendente"
-                })
-                if sucesso is not None:
-                    st.cache_data.clear()
-                    st.success("✅ Comprovante enviado! A tesouraria irá validar em breve.")
-                    st.rerun()
+    import datetime
+import extra_streamlit_components as stx
 
 qp = st.query_params
+
+# Página Pública de Inscrição
 if qp.get("pagina") == "inscricao":
     st.markdown("<style>[data-testid='stSidebar'], [data-testid='collapsedControl'] {display:none;}</style>", unsafe_allow_html=True)
     pagina_inscricao_publica()
     st.stop()
 
-# ==========================================
-# MENU LATERAL INTERNO E CONTROLE DE ACESSO (RBAC)
-# ==========================================
-categorias_db = carregar_categorias()
-eventos_db = carregar("eventos")
-contas_bancarias_db = carregar("contas_bancarias")
-usuarios_db = carregar_usuarios()
+# Tela de Redefinição de Senha (Link do e-mail)
+if qp.get("pagina") == "atualizar_senha":
+    st.markdown("<style>[data-testid='stSidebar'], [data-testid='collapsedControl'] {display:none;}</style>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("<div style='margin-top: 100px;'></div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("<h3 style='text-align:center;'>🔑 Criar Nova Senha</h3>", unsafe_allow_html=True)
+            nova_senha = st.text_input("Digite sua nova senha", type="password")
+            if st.button("Salvar e Entrar", use_container_width=True, type="primary"):
+                try:
+                    supabase.auth.update_user({"password": nova_senha})
+                    st.success("✅ Senha atualizada com sucesso!")
+                    st.markdown("🔗 **[Clique aqui para voltar ao Login](https://financeiro-comuna-sbc.streamlit.app)**")
+                except Exception as e:
+                    st.error("❌ Ocorreu um erro. O link pode ser inválido ou ter expirado.")
+    st.stop()
 
-st.sidebar.markdown("<h4 style='margin-top:0px;'>🔑 Acesso ao Sistema</h4>", unsafe_allow_html=True)
-if not usuarios_db:
-    st.sidebar.warning("Crie o primeiro usuário na aba Gestão de Usuários.")
-    usuario_logado = {"nome": "Admin Padrão", "perfil": "Visão Total Tesouraria", "id": None}
-else:
-    opcoes_login = {u['nome']: u for u in usuarios_db}
-    nome_logado = st.sidebar.selectbox("Simular acesso como:", list(opcoes_login.keys()))
-    usuario_logado = opcoes_login[nome_logado]
+# Gerenciador de Cookies (Manter conectado por 30 dias)
+@st.cache_resource
+def get_cookie_manager():
+    return stx.CookieManager()
 
+cookie_manager = get_cookie_manager()
+
+if "autenticado" not in st.session_state:
+    auth_salvo = cookie_manager.get(cookie="igreja_auth_id")
+    if auth_salvo:
+        st.session_state["autenticado"] = True
+        st.session_state["auth_id"] = auth_salvo
+    else:
+        st.session_state["autenticado"] = False
+        st.session_state["auth_id"] = None
+
+# Tela de Login Principal
+if not st.session_state["autenticado"]:
+    st.markdown("<style>[data-testid='stSidebar'] {display:none;}</style>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("<div style='margin-top: 100px;'></div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("<h3 style='text-align:center;'>🔒 Acesso ao Sistema</h3>", unsafe_allow_html=True)
+            with st.form("form_login"):
+                email_digitado = st.text_input("E-mail do Usuário", autocomplete="username")
+                senha_digitada = st.text_input("Senha", type="password", autocomplete="current-password")
+                lembrar_de_mim = st.checkbox("Manter conectado por 30 dias", value=True)
+                
+                entrar = st.form_submit_button("Entrar", type="primary", use_container_width=True)
+                if entrar:
+                    try:
+                        resposta_auth = supabase.auth.sign_in_with_password({
+                            "email": email_digitado,
+                            "password": senha_digitada
+                        })
+                        st.session_state["autenticado"] = True
+                        st.session_state["auth_id"] = resposta_auth.user.id
+                        
+                        if lembrar_de_mim:
+                            vencimento = datetime.datetime.now() + datetime.timedelta(days=30)
+                            cookie_manager.set("igreja_auth_id", resposta_auth.user.id, expires_at=vencimento)
+                        st.rerun()
+                    except Exception as e:
+                        st.error("❌ E-mail ou senha incorretos.")
+            
+            with st.expander("Esqueci minha senha"):
+                st.caption("Enviaremos um link de recuperação para o seu e-mail.")
+                email_recuperacao = st.text_input("Seu e-mail de cadastro", key="input_recuperacao")
+                if st.button("Enviar link", use_container_width=True):
+                    if email_recuperacao:
+                        try:
+                            app_url = st.secrets.get("APP_URL", "https://financeiro-comuna-sbc.streamlit.app").rstrip("/")
+                            supabase.auth.reset_password_for_email(
+                                email_recuperacao,
+                                options={"redirect_to": f"{app_url}/?pagina=atualizar_senha"}
+                            )
+                            st.success("📩 E-mail enviado!")
+                        except:
+                            st.error("❌ Não foi possível enviar.")
+    st.stop()
+
+# Controle de Acesso (RBAC) e Menu Lateral
+usuario_db = sb_request("usuarios", "GET", filtros={"auth_id": f"eq.{st.session_state['auth_id']}"})
+
+if not usuario_db:
+    st.sidebar.error("Usuário logado não possui um perfil cadastrado.")
+    if st.sidebar.button("Sair"):
+        supabase.auth.sign_out()
+        cookie_manager.delete("igreja_auth_id")
+        st.session_state["autenticado"] = False
+        st.rerun()
+    st.stop()
+
+usuario_logado = usuario_db[0]
 st.session_state["usuario_logado"] = usuario_logado
 perfil_ativo = usuario_logado.get("perfil", "Visão Total Tesouraria")
 
+st.sidebar.markdown(f"<h4 style='margin-top:0px;'>👤 {usuario_logado.get('nome', 'Usuário')}</h4>", unsafe_allow_html=True)
+st.sidebar.caption(f"Perfil: {perfil_ativo}")
+
+if st.sidebar.button("🚪 Sair do Sistema", use_container_width=True):
+    supabase.auth.sign_out()
+    cookie_manager.delete("igreja_auth_id")
+    st.session_state["autenticado"] = False
+    st.session_state["auth_id"] = None
+    st.rerun()
+
 if "page" not in st.session_state:
     st.session_state.page = "Resumo do Dia" if perfil_ativo == "Visão Total Tesouraria" else ("Visão Consolidada" if perfil_ativo == "Visão Conselho" else "Painel de Eventos")
-
-st.markdown("""
-    <style>
-    [data-testid="stSidebar"] {
-        background-color: #F8FAFC !important;
-        border-right: 1px solid #E2E8F0 !important;
-    }
-    [data-testid="stSidebar"] .stButton button {
-        width: 100%; text-align: left; justify-content: flex-start;
-        border-radius: 8px; padding: 0.5rem 1rem; font-weight: 600;
-        margin-bottom: 4px; transition: all 0.2s ease;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-def secao(nome):
-    st.sidebar.markdown(f"<p style='color:#94A3B8;font-size:0.68rem;font-weight:700;letter-spacing:0.08em;margin:10px 0 2px 4px;'>{nome}</p>", unsafe_allow_html=True)
-
-def nav_button(label, icon):
-    ativo = st.session_state.page == label
-    if st.sidebar.button(f"{icon}  {label}", key=f"nav_{label}", use_container_width=True, type="primary" if ativo else "secondary"):
-        st.session_state.page = label
-        st.rerun()
-
-st.sidebar.markdown("<hr style='margin: 8px 0; border-color: #E2E8F0;'>", unsafe_allow_html=True)
-
-if perfil_ativo == "Visão Total Tesouraria":
-    secao("OPERACIONAL")
-    nav_button("Resumo do Dia", "🏠")
-    nav_button("Tesouraria", "💰")
-    nav_button("Conciliação Bancária", "🏦")
-    nav_button("Visão Consolidada", "📋")
-    nav_button("Categorias", "🏷️")
-
-    secao("ESTRATÉGICO")
-    nav_button("Metas e Orçamentos", "🎯")
-
-    secao("RELATÓRIOS")
-    nav_button("Analytics Financeiro", "📊")
-    nav_button("Exportar Contabilidade", "📥")
-
-if perfil_ativo in ["Visão Total Tesouraria", "Visão Conselho"]:
-    if perfil_ativo == "Visão Conselho":
-        secao("VISÃO GERAL")
-        nav_button("Visão Consolidada", "📋")
-        nav_button("Analytics Financeiro", "📊")
-
-if perfil_ativo in ["Visão Total Tesouraria", "Visão Eventos"]:
-    st.sidebar.markdown("<hr style='margin: 8px 0; border-color: #E2E8F0;'>", unsafe_allow_html=True)
-    secao("GESTÃO DE EVENTOS")
-    nav_button("Painel de Eventos", "🎫")
-    nav_button("Inscrições e Comprovantes", "✅")
-
-if perfil_ativo == "Visão Total Tesouraria":
-    st.sidebar.markdown("<hr style='margin: 8px 0 4px 0; border-color: #E2E8F0;'>", unsafe_allow_html=True)
-    secao("ADMINISTRAÇÃO")
-    nav_button("Gestão de Usuários", "👥")
-
-page = st.session_state.page
-
 # ==========================================
 # ==========================================
 # ==========================================
