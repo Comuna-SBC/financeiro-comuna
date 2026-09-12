@@ -456,6 +456,21 @@ if "page" not in st.session_state:
     st.session_state.page = "Resumo do Dia" if perfil_ativo == "Visão Total Tesouraria" else ("Visão Consolidada" if perfil_ativo == "Visão Conselho" else "Painel de Eventos")
 # ==========================================
 # ==========================================
+
+# ==========================================
+# CARREGAMENTO DE DADOS GLOBAIS (PÓS-LOGIN)
+# ==========================================
+try:
+    contas_bancarias_db = carregar("contas_bancarias")
+except Exception:
+    contas_bancarias_db = []
+
+try:
+    categorias_db = carregar_categorias()
+except Exception:
+    categorias_db = []
+
+
 # ==========================================
 # RESUMO DO DIA 
 # ==========================================
