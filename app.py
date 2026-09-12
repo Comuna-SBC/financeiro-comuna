@@ -2060,6 +2060,22 @@ elif page == "Painel de Eventos":
             status_evento = ev.get("status") or "Aberto"
             cor_status = "#059669" if status_evento == "Aberto" else "#94A3B8"
             
+            # Formatação dos centavos para aparecer no cartão
+            codigo_centavos = ev.get("codigo_centavos")
+            texto_centavos_card = f" &nbsp;•&nbsp; 🪙 Centavos para Pix: <b>,{codigo_centavos}</b>" if codigo_centavos else ""
+            
+            # Montagem das URLs padrão
+            app_url = st.secrets.get("APP_URL", "").rstrip("/")
+            if "[" in app_url and "](" in app_url:
+                import re
+                match = re.search(r'\((https?://[^)]+)\)', app_url)
+                app_url = match.group(1) if match else "https://financeiro-comuna-sbc.streamlit.app"
+            elif not app_url:
+                app_url = "https://financeiro-comuna-sbc.streamlit.app"
+                
+            complemento_link = f"?pagina=inscricao&evento={ev['id']}"
+            link_publico = f"{app_url}/{complemento_link}"
+
             if tem_part:
                 inscricoes_evento = [i for i in inscricoes_all if str(i.get("evento_id")) == str(ev.get("id"))]
                 ids_inscricoes_evento = {str(i.get("id")) for i in inscricoes_evento}
@@ -2078,6 +2094,12 @@ elif page == "Painel de Eventos":
                 
                 info_participantes = f"👥 {total_inscritos} inscritos &nbsp;•&nbsp; {vagas_restantes} vagas restantes &nbsp;•&nbsp; ✅ {len(inscricoes_quitadas)} quitados &nbsp;•&nbsp; 🟡 {len(inscricoes_parciais)} parciais"
                 info_alertas = f'<p style="color:#D97706;margin:4px 0;font-weight:600;">⏳ {len(pagamentos_pendentes)} comprovantes aguardando aprovação</p>' if pagamentos_pendentes else ''
+
+                # Geração do texto WhatsApp para Evento
+                texto_whatsapp = f"Olá! As inscrições para o *{ev.get('nome')}* estão abertas! 🎉\n\n📅 *Data:* {ev.get('data_evento') or '—'}\n💰 *Valor:* {fmt_moeda(ev.get('valor_inscricao'))} ({parcelamento_texto})\n\n🔗 *Faça sua inscrição pelo link:* \n{link_publico}\n\n🔑 *Chave Pix:* {ev.get('chave_pix') or '—'}"
+                if codigo_centavos:
+                    texto_whatsapp += f"\n\n⚠️ *Atenção:* Ao fazer o pagamento via Pix, **adicione nossos centavos (*,{codigo_centavos}*)** no valor final. Exemplo: R$ {int(ev.get('valor_inscricao') or 0)},{codigo_centavos}. Isso garante a confirmação automática no sistema!"
+
             else:
                 creditos_ev = sb_request("creditos_ofx", "GET", filtros={"evento_id": f"eq.{ev['id']}"}) or []
                 total_arrecadado = sum(float(c.get("valor") or 0) for c in creditos_ev if c.get("status") == "Vinculado")
@@ -2088,12 +2110,17 @@ elif page == "Painel de Eventos":
                 info_alertas = ""
                 parcelamento_texto = "Doação Espontânea"
 
-            # O HTML foi envelopado sem quebras de linha com indentação para evitar bugs do Markdown
+                # Geração do texto WhatsApp para Campanha
+                texto_whatsapp = f"Olá! Nossa campanha *{ev.get('nome')}* está ativa! 🎯\n\nNossa meta é arrecadar {fmt_moeda(ev.get('valor_inscricao'))} e toda ajuda faz muita diferença! 🙏\n\nPara contribuir, faça seu Pix para a chave abaixo:\n🔑 *Chave Pix:* {ev.get('chave_pix') or '—'}"
+                if codigo_centavos:
+                    texto_whatsapp += f"\n\n⚠️ *Importante:* Adicione o código (*,{codigo_centavos}*) no final do valor da sua doação. Exemplo: para doar R$ 50, transfira R$ 50,{codigo_centavos}. Isso nos ajuda a identificar sua doação de forma rápida e automática!"
+
+            # O HTML foi envelopado sem quebras de linha com indentação
             card_html = (
                 f'<div style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:14px;padding:20px;margin-bottom:12px;">'
                 f'<h4 style="margin-top:0;">{ev.get("nome", "Evento")} <span style="font-size:0.8rem;color:{cor_status};">● {status_evento}</span></h4>'
                 f'<p style="color:#475569;margin:4px 0;">📅 {ev.get("data_evento") or "—"} &nbsp;•&nbsp; 💰 {fmt_moeda(ev.get("valor_inscricao"))} {"por pessoa" if tem_part else "(Alvo Global)"}</p>'
-                f'<p style="color:#475569;margin:4px 0;">💳 {parcelamento_texto} &nbsp;•&nbsp; 🔑 Pix: {ev.get("chave_pix") or "—"}</p>'
+                f'<p style="color:#475569;margin:4px 0;">💳 {parcelamento_texto} &nbsp;•&nbsp; 🔑 Pix: {ev.get("chave_pix") or "—"}{texto_centavos_card}</p>'
                 f'<p style="color:#475569;margin:4px 0;">{info_participantes}</p>'
                 f'{info_alertas}'
                 f'<p style="color:#059669;margin:4px 0;font-weight:600;">💵 Arrecadado: {fmt_moeda(total_arrecadado)} &nbsp;•&nbsp; {"A receber" if tem_part else "Faltam"}: {fmt_moeda(saldo_a_receber)}</p>'
@@ -2101,41 +2128,28 @@ elif page == "Painel de Eventos":
             )
             st.markdown(card_html, unsafe_allow_html=True)
 
-            if tem_part:
-                app_url = st.secrets.get("APP_URL", "").rstrip("/")
-                if "[" in app_url and "](" in app_url:
-                    import re
-                    match = re.search(r'\((https?://[^)]+)\)', app_url)
-                    app_url = match.group(1) if match else "https://financeiro-comuna-sbc.streamlit.app"
-                elif not app_url:
-                    app_url = "https://financeiro-comuna-sbc.streamlit.app"
-
-                complemento_link = f"?pagina=inscricao&evento={ev['id']}"
-                link_publico = f"{app_url}/{complemento_link}"
-
-                col_link, col_acao = st.columns([3, 1])
-                with col_link:
-                    st.caption("Link público para enviar aos participantes (Passe o mouse e clique no ícone de copiar 📋 à direita)")
+            col_esq, col_meio, col_dir = st.columns([2.2, 1, 1.2])
+            
+            with col_esq:
+                if tem_part:
+                    st.caption("Link de inscrição (Passe o mouse e copie 📋)")
                     st.code(link_publico, language="text")
-                    st.markdown(f"🔗 [Abrir página para testar]({link_publico})", unsafe_allow_html=True)
+                else:
+                    st.info("💡 Por ser campanha, use o texto do botão ao lado ➡")
+            
+            with col_meio:
+                with st.popover("📱 Divulgar no WhatsApp", use_container_width=True):
+                    st.markdown("**Copie o texto pronto abaixo (passe o mouse na caixa para o ícone de cópia):**")
+                    st.code(texto_whatsapp, language="text")
                     
-                with col_acao:
-                    novo_status = "Encerrado" if status_evento == "Aberto" else "Aberto"
-                    texto_botao = "🔒 Encerrar inscrições" if status_evento == "Aberto" else "🔓 Reabrir inscrições"
-                    if st.button(texto_botao, key=f"alterar_status_evento_{ev['id']}", use_container_width=True):
-                        resultado = sb_request("eventos", "PATCH", {"status": novo_status}, filtros={"id": f"eq.{ev['id']}"})
-                        if resultado is not None:
-                            st.cache_data.clear()
-                            st.rerun()
-            else:
-                col_c1, col_c2 = st.columns([3, 1])
-                with col_c1:
-                    st.info("💡 Por ser uma Campanha de Arrecadação, não há link de inscrição web. Divulgue apenas a Chave Pix e o Código de Centavos.")
-                with col_c2:
-                    novo_status = "Encerrado" if status_evento == "Aberto" else "Aberto"
-                    texto_botao = "🔒 Encerrar campanha" if status_evento == "Aberto" else "🔓 Reabrir campanha"
-                    if st.button(texto_botao, key=f"alterar_status_campanha_{ev['id']}", use_container_width=True):
-                        sb_request("eventos", "PATCH", {"status": novo_status}, filtros={"id": f"eq.{ev['id']}"})
+            with col_dir:
+                novo_status = "Encerrado" if status_evento == "Aberto" else "Aberto"
+                texto_botao = "🔒 Encerrar " + ("inscrições" if tem_part else "campanha")
+                if status_evento != "Aberto":
+                    texto_botao = "🔓 Reabrir " + ("inscrições" if tem_part else "campanha")
+                if st.button(texto_botao, key=f"alterar_status_ev_{ev['id']}", use_container_width=True):
+                    resultado = sb_request("eventos", "PATCH", {"status": novo_status}, filtros={"id": f"eq.{ev['id']}"})
+                    if resultado is not None:
                         st.cache_data.clear()
                         st.rerun()
                         
