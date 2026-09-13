@@ -364,12 +364,11 @@ if qp.get("pagina") == "atualizar_senha":
                     st.error("❌ Ocorreu um erro. O link pode ser inválido ou ter expirado.")
     st.stop()
 
-# Gerenciador de Cookies
-@st.cache_resource
-def get_cookie_manager():
-    return stx.CookieManager()
-
-cookie_manager = get_cookie_manager()
+# ==========================================
+# GESTÃO DE ACESSOS E PAINEL (CORRIGIDO)
+# ==========================================
+# 1. Removido o @st.cache_resource para evitar o erro do Streamlit
+cookie_manager = stx.CookieManager(key="cookie_manager")
 
 if "autenticado" not in st.session_state:
     auth_salvo = cookie_manager.get(cookie="igreja_auth_id")
@@ -380,7 +379,7 @@ if "autenticado" not in st.session_state:
         st.session_state["autenticado"] = False
         st.session_state["auth_id"] = None
 
-# Tela de Login
+# Tela de Login Principal
 if not st.session_state["autenticado"]:
     st.markdown("<style>[data-testid='stSidebar'] {display:none;}</style>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -426,7 +425,9 @@ if not st.session_state["autenticado"]:
                             st.error("❌ Não foi possível enviar.")
     st.stop()
 
-# Controle de Acesso (RBAC) e Menu Lateral
+# ==========================================
+# CONTROLE DE ACESSO E CONSTRUÇÃO DO MENU LATERAL
+# ==========================================
 usuario_db = sb_request("usuarios", "GET", filtros={"auth_id": f"eq.{st.session_state['auth_id']}"})
 
 if not usuario_db:
@@ -445,6 +446,7 @@ perfil_ativo = usuario_logado.get("perfil", "Visão Total Tesouraria")
 st.sidebar.markdown(f"<h4 style='margin-top:0px;'>👤 {usuario_logado.get('nome', 'Usuário')}</h4>", unsafe_allow_html=True)
 st.sidebar.caption(f"Perfil: {perfil_ativo}")
 
+# Botão de Sair
 if st.sidebar.button("🚪 Sair do Sistema", use_container_width=True):
     supabase.auth.sign_out()
     cookie_manager.delete("igreja_auth_id")
@@ -452,10 +454,29 @@ if st.sidebar.button("🚪 Sair do Sistema", use_container_width=True):
     st.session_state["auth_id"] = None
     st.rerun()
 
+st.sidebar.markdown("---")
+st.sidebar.markdown("**Navegação**")
+
+# 2. Lógica de Menus que havia sido apagada acidentalmente
+if perfil_ativo == "Visão Total Tesouraria":
+    opcoes_menu = ["Resumo do Dia", "Lançamentos e Anexos", "Conciliação Bancária", "Orçamentos e Metas", "Gestão de Pessoas", "Painel de Eventos", "Relatórios"]
+elif perfil_ativo == "Visão Conselho":
+    opcoes_menu = ["Visão Consolidada", "Painel de Eventos"]
+else: # Visão Eventos
+    opcoes_menu = ["Painel de Eventos"]
+
 if "page" not in st.session_state:
-    st.session_state.page = "Resumo do Dia" if perfil_ativo == "Visão Total Tesouraria" else ("Visão Consolidada" if perfil_ativo == "Visão Conselho" else "Painel de Eventos")
-# ==========================================
-# ==========================================
+    st.session_state.page = opcoes_menu[0]
+
+# Renderiza os botões do menu
+for pagina_menu in opcoes_menu:
+    # Deixa o botão "Azul" se for a página ativa, senão deixa cinza
+    tipo_botao = "primary" if st.session_state.page == pagina_menu else "secondary"
+    if st.sidebar.button(pagina_menu, key=f"btn_menu_{pagina_menu}", type=tipo_botao):
+        st.session_state.page = pagina_menu
+        st.rerun()
+
+st.sidebar.markdown("---")
 
 # ==========================================
 # CARREGAMENTO DE DADOS GLOBAIS (PÓS-LOGIN)
@@ -470,7 +491,7 @@ try:
 except Exception:
     categorias_db = []
 
-
+# (A PARTIR DAQUI COMEÇAM OS IFs DAS PÁGINAS, COMO: if st.session_state.page == "Resumo do Dia": )
 # ==========================================
 # RESUMO DO DIA 
 # ==========================================
