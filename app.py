@@ -103,10 +103,16 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 def sb_request(tabela, metodo="GET", payload=None, filtros=None):
     headers = {
         "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
         "Content-Type": "application/json",
         "Prefer": "return=representation"
     }
+    
+    # Injetando Token Auth para o RLS funcionar
+    if "session" in st.session_state and st.session_state["session"]:
+        headers["Authorization"] = f"Bearer {st.session_state['session'].access_token}"
+    else:
+        headers["Authorization"] = f"Bearer {SUPABASE_KEY}"
+
     url = f"{SUPABASE_URL}/rest/v1/{tabela}"
     try:
         res = None
@@ -318,7 +324,7 @@ def upsert_orcamento(ano, categoria_id, valor):
     st.cache_data.clear()
 
 # ==========================================
-# PÁGINA PÚBLICA DE INSCRIÇÃO
+# PÁGINA PÚBLICA DE INSCRIÇÃO (SEM LOGIN)
 # ==========================================
 def pagina_inscricao_publica():
     st.markdown("<h1 style='text-align:center;'>⛪ Inscrição em Evento</h1>", unsafe_allow_html=True)
@@ -463,6 +469,30 @@ if qp.get("pagina") == "inscricao":
     st.stop()
 
 # ==========================================
+# AUTHENTICATION & LOGIN (SUPABASE AUTH)
+# ==========================================
+if "session" not in st.session_state:
+    st.session_state["session"] = None
+
+if not st.session_state["session"]:
+    st.markdown("<h2 style='text-align:center; margin-top: 50px;'>🔐 Acesso Restrito</h2>", unsafe_allow_html=True)
+    col_l1, col_l2, col_l3 = st.columns([1, 1.5, 1])
+    with col_l2:
+        with st.form("login_form"):
+            st.markdown("Entre com suas credenciais para acessar o painel de administração.")
+            email = st.text_input("E-mail")
+            senha = st.text_input("Senha", type="password")
+            submit = st.form_submit_button("Entrar", use_container_width=True, type="primary")
+            if submit:
+                try:
+                    res = supabase.auth.sign_in_with_password({"email": email, "password": senha})
+                    st.session_state["session"] = res.session
+                    st.rerun()
+                except Exception as e:
+                    st.error("Credenciais inválidas. Verifique seu e-mail e senha.")
+    st.stop()
+
+# ==========================================
 # MENU LATERAL INTERNO E CONTROLE DE ACESSO (RBAC)
 # ==========================================
 categorias_db = carregar_categorias()
@@ -471,16 +501,33 @@ contas_bancarias_db = carregar("contas_bancarias")
 usuarios_db = carregar_usuarios()
 
 st.sidebar.markdown("<h4 style='margin-top:0px;'>🔑 Acesso ao Sistema</h4>", unsafe_allow_html=True)
-if not usuarios_db:
-    st.sidebar.warning("Crie o primeiro usuário na aba Gestão de Usuários.")
-    usuario_logado = {"nome": "Admin Padrão", "perfil": "Visão Total Tesouraria", "id": None}
+
+# Buscar o perfil baseado no email do Auth logado
+user_email_logado = st.session_state["session"].user.email
+usuario_match = next((u for u in usuarios_db if u.get('email') == user_email_logado), None)
+
+if usuario_match:
+    usuario_logado = usuario_match
 else:
-    opcoes_login = {u['nome']: u for u in usuarios_db}
-    nome_logado = st.sidebar.selectbox("Simular acesso como:", list(opcoes_login.keys()))
-    usuario_logado = opcoes_login[nome_logado]
+    # Se o admin criou via Auth mas não está na tabela de usuários
+    usuario_logado = {"nome": user_email_logado, "perfil": "Visão Total Tesouraria", "id": None, "email": user_email_logado}
 
 st.session_state["usuario_logado"] = usuario_logado
 perfil_ativo = usuario_logado.get("perfil", "Visão Total Tesouraria")
+
+# Exibe o card do usuário logado e botão de sair
+st.sidebar.markdown(f"""
+    <div style='padding: 12px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; margin-bottom: 12px;'>
+        <p style='margin: 0; font-weight: 700; color: #1E293B; font-size: 0.95rem;'>👤 {usuario_logado.get('nome')}</p>
+        <p style='margin: 0; font-size: 0.75rem; color: #64748B; margin-top: 2px;'>{perfil_ativo}</p>
+    </div>
+""", unsafe_allow_html=True)
+
+if st.sidebar.button("🚪 Sair (Logout)", use_container_width=True):
+    supabase.auth.sign_out()
+    st.session_state["session"] = None
+    st.cache_data.clear()
+    st.rerun()
 
 if "page" not in st.session_state:
     st.session_state.page = "Resumo do Dia" if perfil_ativo == "Visão Total Tesouraria" else ("Visão Consolidada" if perfil_ativo == "Visão Conselho" else "Painel de Eventos")
@@ -546,11 +593,6 @@ page = st.session_state.page
 
 # ==========================================
 # ==========================================
-# ==========================================
-# RESUMO DO DIA 
-# ==========================================
-page = st.session_state.page
-
 # ==========================================
 # RESUMO DO DIA 
 # ==========================================
@@ -1597,7 +1639,7 @@ elif page == "Tesouraria":
                                     st.success("Regra atualizada com sucesso!")
                                     time.sleep(1)
                                     st.rerun()
-                                    
+                                
                             if col_s2.form_submit_button("❌ Cancelar", use_container_width=True):
                                 st.session_state[f"editing_rec_{rec_id}"] = False
                                 st.rerun()
@@ -2270,7 +2312,7 @@ elif page == "Inscrições e Comprovantes":
                                                 })
                                             else:
                                                 sb_request("creditos_ofx", "PATCH", {"status": "Vinculado", "inscricao_id": insc_id}, filtros={"id": f"eq.{cred['id']}"})
-                                                
+                                            
                                             novo_pag = sb_request("inscricao_pagamentos", "POST", {
                                                 "inscricao_id": insc_id,
                                                 "numero_parcela": len([p for p in pagamentos_all if p.get("inscricao_id") == insc_id]) + 1,
@@ -2794,27 +2836,38 @@ elif page == "Gestão de Usuários":
             with st.form("form_usuario", clear_on_submit=True):
                 n_nome = st.text_input("Nome Completo *")
                 n_email = st.text_input("Email *")
+                n_senha = st.text_input("Senha Temporária *", type="password", help="Senha para o primeiro acesso do usuário.")
                 n_tel = st.text_input("Telefone (WhatsApp) *")
                 n_cpf = st.text_input("CPF (Opcional)")
                 n_perfil = st.selectbox("Perfil de Acesso *", ["Visão Total Tesouraria", "Visão Conselho", "Visão Eventos"])
                 
                 if st.form_submit_button("Cadastrar Usuário", use_container_width=True, type="primary"):
-                    if not n_nome or not n_email or not n_tel:
-                        st.warning("⚠️ Nome, Email e Telefone são obrigatórios.")
+                    if not n_nome or not n_email or not n_tel or not n_senha:
+                        st.warning("⚠️ Nome, Email, Senha e Telefone são obrigatórios.")
                     else:
-                        payload = {
-                            "nome": n_nome, "email": n_email, "telefone": n_tel, 
-                            "cpf": n_cpf if n_cpf else None, "perfil": n_perfil, "status": "Ativo"
-                        }
-                        res = sb_request("usuarios", "POST", [payload])
-                        if res is not None:
-                            st.cache_data.clear()
-                            st.success("Usuário cadastrado com sucesso!")
-                            time.sleep(1)
-                            st.rerun()
+                        try:
+                            # 1. Cria usuário no Auth do Supabase (Apenas e-mail e senha)
+                            supabase.auth.sign_up({
+                                "email": n_email,
+                                "password": n_senha
+                            })
+                            
+                            # 2. Registra dados do perfil na tabela 'usuarios'
+                            payload = {
+                                "nome": n_nome, "email": n_email, "telefone": n_tel, 
+                                "cpf": n_cpf if n_cpf else None, "perfil": n_perfil, "status": "Ativo"
+                            }
+                            res = sb_request("usuarios", "POST", [payload])
+                            if res is not None:
+                                st.cache_data.clear()
+                                st.success("Usuário criado no sistema com sucesso!")
+                                time.sleep(1.5)
+                                st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao criar usuário no Auth: {e}")
 
     with col_edit:
-        with st.expander("✏️ Editar ou Excluir Usuário"):
+        with st.expander("✏️ Editar ou Excluir Usuário (Tabela)"):
             if usuarios_db:
                 user_opcoes = {f"{u['nome']} ({u['perfil']})": u for u in usuarios_db}
                 user_sel = st.selectbox("Selecione o Usuário", list(user_opcoes.keys()))
@@ -2833,6 +2886,7 @@ elif page == "Gestão de Usuários":
                     c1, c2 = st.columns(2)
                     btn_upd = c1.form_submit_button("💾 Atualizar", use_container_width=True)
                     btn_del = c2.form_submit_button("🗑️ Excluir", use_container_width=True)
+                    st.caption("Nota: A exclusão aqui remove apenas o perfil da tabela. Para deletar a conta de login permanentemente, acesse o painel do Supabase Authentication.")
 
                     if btn_upd:
                         payload = {"nome": e_nome, "email": e_email, "telefone": e_tel, "cpf": e_cpf, "perfil": e_perfil}
