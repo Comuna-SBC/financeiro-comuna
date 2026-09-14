@@ -365,7 +365,7 @@ def pagina_inscricao_publica():
     with col_center:
         acao = st.radio(
             "Escolha uma opção:",
-            ["📝 Opção 1 - Quero me inscrever neste evento", " 📎  Opção 2 - Já sou inscrito e quero enviar meu comprovante"],
+            ["📝 Opção 1 - Quero me inscrever neste evento", " 📎    Opção 2 - Já sou inscrito e quero enviar meu comprovante"],
             key="radio_acao_publica",
             label_visibility="collapsed",
             index=None
