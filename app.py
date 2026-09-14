@@ -324,90 +324,131 @@ def upsert_orcamento(ano, categoria_id, valor):
     st.cache_data.clear()
 
 # ==========================================
+# ==========================================
 # PÁGINA PÚBLICA DE INSCRIÇÃO (SEM LOGIN)
 # ==========================================
 def pagina_inscricao_publica():
-    st.markdown("<h1 style='text-align:center;'>⛪ Inscrição em Evento</h1>", unsafe_allow_html=True)
     eventos_abertos = [e for e in carregar("eventos") if e.get("status") == "Aberto"]
+    
     if not eventos_abertos:
+        st.markdown("<h1 style='text-align:center;'>⛪ Inscrição em Evento</h1>", unsafe_allow_html=True)
         st.info("Não há eventos com inscrições abertas no momento.")
         return
 
     qp = st.query_params
     evento_id_param = qp.get("evento")
-    evento_travado = next((e for e in eventos_abertos if str(e["id"]) == str(evento_id_param)), None) if evento_id_param else None
+    evento = next((e for e in eventos_abertos if str(e["id"]) == str(evento_id_param)), None) if evento_id_param else None
 
-    if evento_travado:
-        evento = evento_travado
-        st.info(f"Você está se inscrevendo em: **{evento['nome']}**")
-    else:
+    if not evento:
+        st.markdown("<h1 style='text-align:center;'>⛪ Inscrição em Evento</h1>", unsafe_allow_html=True)
         nomes = [e["nome"] for e in eventos_abertos]
         evento_sel_nome = st.selectbox("Selecione o Evento", nomes)
         evento = next(e for e in eventos_abertos if e["nome"] == evento_sel_nome)
 
-    parcela_info = f"<p style='margin:0;color:#475569;'>📆 Pagamento em até <b>{evento.get('numero_parcelas',1)}x</b></p>" if evento.get("permite_parcelamento") else ""
+    # NOVO CABEÇALHO ELEGANTE E DESTACADO
+    st.markdown(f"<h1 style='text-align:center; color: #1E293B; margin-bottom: 25px;'>⛪ Página do Evento<br><span style='color: #2563EB;'>{evento['nome']}</span></h1>", unsafe_allow_html=True)
+
+    parcela_info = f"<p style='margin:0;color:#475569;font-size: 1.1em;'>📆 Pagamento em até <b>{evento.get('numero_parcelas',1)}x</b></p>" if evento.get("permite_parcelamento") else ""
     st.markdown(f"""
-    <div style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:14px;padding:20px;margin-bottom:20px;">
-        <p style="margin:0;color:#475569;">📅 Data: <b>{evento.get('data_evento','—')}</b></p>
-        <p style="margin:0;color:#475569;">💰 Valor Total: <b>{fmt_moeda(evento.get('valor_inscricao'))}</b></p>
-        <p style="margin:0;color:#475569;">🔑 Chave Pix: <b>{evento.get('chave_pix','—')}</b></p>
+    <div style="background:#F8FAFC;border:2px dashed #CBD5E1;border-radius:14px;padding:20px;margin-bottom:30px; text-align: center;">
+        <p style="margin:0;color:#334155; font-size: 1.2em;">📅 Data: <b>{evento.get('data_evento','—')}</b> &nbsp;|&nbsp; 💰 Valor Total: <b>{fmt_moeda(evento.get('valor_inscricao'))}</b></p>
+        <p style="margin:8px 0 8px 0;color:#334155; font-size: 1.2em;">🔑 Chave Pix: <b>{evento.get('chave_pix','—')}</b></p>
         {parcela_info}
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("### 🔎 Informe seu CPF para começar")
-    cpf_busca = st.text_input("CPF", key="cpf_busca", placeholder="Somente números")
-    cpf_limpo_busca = somente_digitos(cpf_busca)
-
-    inscricao_existente = None
-    if len(cpf_limpo_busca) == 11:
-        todas_insc = carregar("inscricoes")
-        inscricao_existente = next(
-            (i for i in todas_insc if i.get("evento_id") == evento["id"] and somente_digitos(i.get("cpf", "")) == cpf_limpo_busca),
-            None
+    st.markdown("<h3 style='text-align:center;'>O que você gostaria de fazer hoje?</h3>", unsafe_allow_html=True)
+    
+    # SELEÇÃO DE AÇÃO CENTRALIZADA
+    _, col_center, _ = st.columns([1, 3, 1])
+    with col_center:
+        acao = st.radio(
+            "Escolha uma opção:",
+            ["📝 Opção 1 - Quero me inscrever neste evento", "📎 Opção 2 - Já sou inscrito e quero enviar meu comprovante"],
+            key="radio_acao_publica",
+            label_visibility="collapsed"
         )
 
-    if inscricao_existente:
-        _painel_pagamentos_participante(inscricao_existente, evento)
-        return
+    st.markdown("<hr style='margin:25px 0; border-color:#E2E8F0;'>", unsafe_allow_html=True)
 
-    if cpf_limpo_busca and len(cpf_limpo_busca) == 11:
-        st.caption("CPF não encontrado para este evento — preencha os dados abaixo para se inscrever.")
-
-    with st.form("form_inscricao_publica", clear_on_submit=False):
-        nome = st.text_input("Nome completo")
-        cpf = st.text_input("CPF", value=cpf_busca or "", placeholder="Somente números")
-        contato = st.text_input("Telefone / WhatsApp")
-        enviar = st.form_submit_button("Criar Inscrição", use_container_width=True)
-        if enviar:
-            cpf_limpo = somente_digitos(cpf)
-            if not nome or not contato or not cpf_valido(cpf_limpo):
-                st.warning("Preencha nome, contato e um CPF válido.")
-            else:
-                todas_insc = carregar("inscricoes")
-                duplicado = any(
-                    i.get("evento_id") == evento["id"] and somente_digitos(i.get("cpf", "")) == cpf_limpo
-                    for i in todas_insc
-                )
-                if duplicado:
-                    st.error("Este CPF já está inscrito neste evento. Digite o CPF no campo acima para carregar sua inscrição e enviar o comprovante.")
-                else:
-                    nova = sb_request("inscricoes", "POST", {
-                        "evento_id": evento["id"],
-                        "nome_participante": nome,
-                        "contato": contato,
-                        "cpf": cpf_limpo,
-                        "valor_total": float(evento.get("valor_inscricao") or 0),
-                        "valor_pago": 0,
-                        "status_pagamento": "Pendente"
-                    })
-                    if nova is not None:
-                        st.cache_data.clear()
-                        st.success("✅ Inscrição criada! Agora envie o comprovante do pagamento abaixo.")
-                        st.session_state["cpf_busca"] = cpf_limpo
-                        st.rerun()
+    # -------------------------------------------------------------
+    # OPÇÃO 1: NOVA INSCRIÇÃO
+    # -------------------------------------------------------------
+    if acao == "📝 Opção 1 - Quero me inscrever neste evento":
+        _, col_form, _ = st.columns([1, 4, 1])
+        with col_form:
+            st.markdown("#### 📝 Preencha seus dados para inscrição")
+            
+            with st.form("form_inscricao_publica", clear_on_submit=False):
+                nome = st.text_input("Nome completo")
+                cpf = st.text_input("CPF (Somente números)", placeholder="Ex: 12345678900")
+                contato = st.text_input("Telefone / WhatsApp")
+                enviar = st.form_submit_button("Finalizar Inscrição", use_container_width=True, type="primary")
+                
+                if enviar:
+                    cpf_limpo = somente_digitos(cpf)
+                    if not nome or not contato or not cpf_valido(cpf_limpo):
+                        st.warning("⚠️ Preencha seu nome, contato e um CPF válido.")
                     else:
-                        st.error("Não foi possível criar a inscrição. Verifique as mensagens de erro acima.")
+                        todas_insc = carregar("inscricoes")
+                        duplicado = any(
+                            i.get("evento_id") == evento["id"] and somente_digitos(i.get("cpf", "")) == cpf_limpo
+                            for i in todas_insc
+                        )
+                        if duplicado:
+                            st.error("❌ Este CPF já está inscrito neste evento! Selecione a 'Opção 2' acima para enviar seu comprovante.")
+                        else:
+                            nova = sb_request("inscricoes", "POST", {
+                                "evento_id": evento["id"],
+                                "nome_participante": nome,
+                                "contato": contato,
+                                "cpf": cpf_limpo,
+                                "valor_total": float(evento.get("valor_inscricao") or 0),
+                                "valor_pago": 0,
+                                "status_pagamento": "Pendente"
+                            })
+                            if nova is not None:
+                                st.cache_data.clear()
+                                st.success("✅ Inscrição criada com sucesso! Redirecionando para envio do comprovante...")
+                                
+                                # Redireciona a pessoa magicamente para a tela 2 com o CPF já preenchido
+                                st.session_state["cpf_busca_comprovante"] = cpf_limpo
+                                st.session_state["radio_acao_publica"] = "📎 Opção 2 - Já sou inscrito e quero enviar meu comprovante"
+                                time.sleep(2)
+                                st.rerun()
+                            else:
+                                st.error("Não foi possível criar a inscrição. Tente novamente.")
+
+    # -------------------------------------------------------------
+    # OPÇÃO 2: ENVIAR COMPROVANTE
+    # -------------------------------------------------------------
+    elif acao == "📎 Opção 2 - Já sou inscrito e quero enviar meu comprovante":
+        _, col_comp, _ = st.columns([1, 4, 1])
+        with col_comp:
+            st.markdown("#### 🔎 Acessar minha inscrição")
+            st.info("Digite o CPF utilizado na sua inscrição para carregar seus dados e anexar o comprovante do Pix.")
+            
+            cpf_busca = st.text_input("Seu CPF (Somente números)", key="cpf_busca_comprovante")
+            cpf_limpo_busca = somente_digitos(cpf_busca)
+
+            if cpf_limpo_busca and len(cpf_limpo_busca) == 11:
+                if not cpf_valido(cpf_limpo_busca):
+                    st.warning("⚠️ CPF com formato inválido.")
+                else:
+                    todas_insc = carregar("inscricoes")
+                    inscricao_existente = next(
+                        (i for i in todas_insc if i.get("evento_id") == evento["id"] and somente_digitos(i.get("cpf", "")) == cpf_limpo_busca),
+                        None
+                    )
+
+                    if inscricao_existente:
+                        st.success("✅ Inscrição encontrada!")
+                        st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
+                        
+                        # Chama o painel com os dados e upload de anexos que você já pediu para manter!
+                        _painel_pagamentos_participante(inscricao_existente, evento)
+                    else:
+                        st.error("❌ Nenhuma inscrição encontrada com este CPF para este evento. Verifique se o número está correto ou volte e faça sua inscrição (Opção 1).")
 
 def _painel_pagamentos_participante(inscricao, evento):
     valor_total = float(inscricao.get("valor_total") or 0)
