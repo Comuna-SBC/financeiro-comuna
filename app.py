@@ -325,6 +325,7 @@ def upsert_orcamento(ano, categoria_id, valor):
 
 # ==========================================
 # ==========================================
+# ==========================================
 # PÁGINA PÚBLICA DE INSCRIÇÃO (SEM LOGIN)
 # ==========================================
 def pagina_inscricao_publica():
@@ -359,17 +360,24 @@ def pagina_inscricao_publica():
 
     st.markdown("<h3 style='text-align:center;'>O que você gostaria de fazer hoje?</h3>", unsafe_allow_html=True)
     
-    # SELEÇÃO DE AÇÃO CENTRALIZADA
+    # SELEÇÃO DE AÇÃO CENTRALIZADA COM INDEX=NONE PARA INICIAR DESMARCADO
     _, col_center, _ = st.columns([1, 3, 1])
     with col_center:
         acao = st.radio(
             "Escolha uma opção:",
             ["📝 Opção 1 - Quero me inscrever neste evento", "📎 Opção 2 - Já sou inscrito e quero enviar meu comprovante"],
             key="radio_acao_publica",
-            label_visibility="collapsed"
+            label_visibility="collapsed",
+            index=None
         )
 
     st.markdown("<hr style='margin:25px 0; border-color:#E2E8F0;'>", unsafe_allow_html=True)
+
+    # -------------------------------------------------------------
+    # SE NENHUMA OPÇÃO FOI ESCOLHIDA, PARA A EXECUÇÃO DA TELA AQUI
+    # -------------------------------------------------------------
+    if acao is None:
+        return
 
     # -------------------------------------------------------------
     # OPÇÃO 1: NOVA INSCRIÇÃO
@@ -445,7 +453,6 @@ def pagina_inscricao_publica():
                         st.success("✅ Inscrição encontrada!")
                         st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
                         
-                        # Chama o painel com os dados e upload de anexos que você já pediu para manter!
                         _painel_pagamentos_participante(inscricao_existente, evento)
                     else:
                         st.error("❌ Nenhuma inscrição encontrada com este CPF para este evento. Verifique se o número está correto ou volte e faça sua inscrição (Opção 1).")
