@@ -327,7 +327,6 @@ def upsert_orcamento(ano, categoria_id, valor):
 # ==========================================
 # ==========================================
 # ==========================================
-# ==========================================
 # PÁGINA PÚBLICA DE INSCRIÇÃO (SEM LOGIN)
 # ==========================================
 
@@ -498,6 +497,66 @@ def pagina_inscricao_publica():
                 st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
                 
                 _painel_pagamentos_participante(insc_encontrada, evento)
+
+def _painel_pagamentos_participante(inscricao, evento):
+    valor_total = float(inscricao.get("valor_total") or 0)
+    valor_pago = float(inscricao.get("valor_pago") or 0)
+    saldo = max(round(valor_total - valor_pago, 2), 0)
+
+    st.markdown(f"### 👤 {inscricao['nome_participante']}")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Valor Total", fmt_moeda(valor_total))
+    c2.metric("Já Pago (aprovado)", fmt_moeda(valor_pago))
+    c3.metric("Saldo Restante", fmt_moeda(saldo))
+    st.progress(min(valor_pago / valor_total, 1.0) if valor_total > 0 else 0.0)
+
+    pagamentos = [p for p in carregar("inscricao_pagamentos") if p.get("inscricao_id") == inscricao["id"]]
+    if pagamentos:
+        st.markdown("#### Comprovantes enviados")
+        for p in sorted(pagamentos, key=lambda x: x.get("numero_parcela", 1)):
+            emoji = {"Pendente": "⏳", "Aprovado": "✅", "Rejeitado": "❌"}.get(p["status"], "")
+            st.write(f"{emoji} Parcela {p.get('numero_parcela',1)} — {fmt_moeda(p.get('valor'))} — {p['status']}")
+
+    if saldo <= 0.01:
+        st.success("🎉 Inscrição totalmente paga. Nenhum novo comprovante é necessário.")
+        return
+
+    st.markdown("#### 📎 Enviar novo comprovante")
+    proxima_parcela = len(pagamentos) + 1
+    parcelas_totais = evento.get("numero_parcelas") or 1
+    parcelas_restantes = max(parcelas_totais - len(pagamentos), 1) if evento.get("permite_parcelamento") else 1
+    sugestao = min(round(saldo / parcelas_restantes, 2), saldo)
+
+    with st.form("form_novo_comprovante", clear_on_submit=True):
+        valor_parcela = st.number_input(
+            "Valor pago nesta parcela (R$)", min_value=0.01, max_value=float(saldo),
+            value=float(sugestao if sugestao > 0 else saldo), format="%.2f"
+        )
+        comprovante = st.file_uploader("Comprovante do Pix", type=['png', 'jpg', 'jpeg', 'pdf'])
+        enviar_pg = st.form_submit_button("Enviar Comprovante", use_container_width=True)
+        if enviar_pg:
+            if not comprovante:
+                st.warning("Anexe o comprovante.")
+            else:
+                url_comp = comprimir_e_fazer_upload(comprovante, pasta="eventos")
+                sucesso = sb_request("inscricao_pagamentos", "POST", {
+                    "inscricao_id": inscricao["id"],
+                    "numero_parcela": proxima_parcela,
+                    "valor": float(valor_parcela),
+                    "comprovante_url": url_comp,
+                    "status": "Pendente"
+                })
+                if sucesso is not None:
+                    st.cache_data.clear()
+                    st.success("✅ Comprovante enviado! A tesouraria irá validar em breve.")
+                    st.rerun()
+
+# BLOCO CRÍTICO: GATILHO QUE LIBERA A PÁGINA PÚBLICA E BLOQUEIA A TELA DE LOGIN
+qp = st.query_params
+if qp.get("pagina") == "inscricao":
+    st.markdown("<style>[data-testid='stSidebar'], [data-testid='collapsedControl'] {display:none;}</style>", unsafe_allow_html=True)
+    pagina_inscricao_publica()
+    st.stop()
 
 # ==========================================
 # AUTHENTICATION & LOGIN (SUPABASE AUTH)
