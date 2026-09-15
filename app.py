@@ -327,6 +327,7 @@ def upsert_orcamento(ano, categoria_id, valor):
 # ==========================================
 # ==========================================
 # ==========================================
+# ==========================================
 # PÁGINA PÚBLICA DE INSCRIÇÃO (SEM LOGIN)
 # ==========================================
 
@@ -390,7 +391,7 @@ def pagina_inscricao_publica():
     with col_center:
         acao = st.radio(
             "Escolha uma opção:",
-            ["📝 Opção 1 - Quero me inscrever neste evento", "📎 Opção 2 - Já sou inscrito e quero enviar meu comprovante"],
+            ["📝 Opção 1 - Quero me inscrever neste evento", "📎 Opção 2 - Já sou inscrito e quero enviar um comprovante de pagamento"],
             key="radio_acao_publica",
             label_visibility="collapsed",
             index=None
@@ -445,7 +446,7 @@ def pagina_inscricao_publica():
                             st.success("✅ Inscrição criada com sucesso! Redirecionando para envio do comprovante...")
                             
                             st.session_state["cpf_busca_comprovante"] = aplicar_mascara_cpf(cpf_limpo)
-                            st.session_state["radio_acao_publica"] = "📎 Opção 2 - Já sou inscrito e quero enviar meu comprovante"
+                            st.session_state["radio_acao_publica"] = "📎 Opção 2 - Já sou inscrito e quero enviar um comprovante de pagamento"
                             st.session_state["redirecionado_inscricao"] = True
                             
                             st.session_state["input_nome_pub"] = ""
@@ -460,7 +461,7 @@ def pagina_inscricao_publica():
     # -------------------------------------------------------------
     # OPÇÃO 2: ENVIAR COMPROVANTE
     # -------------------------------------------------------------
-    elif acao == "📎 Opção 2 - Já sou inscrito e quero enviar meu comprovante":
+    elif acao == "📎 Opção 2 - Já sou inscrito e quero enviar um comprovante de pagamento":
         _, col_comp, _ = st.columns([1, 4, 1])
         with col_comp:
             st.markdown("#### 🔎 Acessar minha inscrição")
@@ -498,6 +499,7 @@ def pagina_inscricao_publica():
                 
                 _painel_pagamentos_participante(insc_encontrada, evento)
 
+
 def _painel_pagamentos_participante(inscricao, evento):
     valor_total = float(inscricao.get("valor_total") or 0)
     valor_pago = float(inscricao.get("valor_pago") or 0)
@@ -515,7 +517,6 @@ def _painel_pagamentos_participante(inscricao, evento):
         st.markdown("#### Comprovantes enviados")
         for p in sorted(pagamentos, key=lambda x: x.get("numero_parcela", 1)):
             emoji = {"Pendente": "⏳", "Aprovado": "✅", "Rejeitado": "❌"}.get(p["status"], "")
-            # Mostra a data se ela existir no banco
             data_pg_str = f" ({pd.to_datetime(p['data_pagamento']).strftime('%d/%m/%Y')})" if p.get('data_pagamento') else ""
             st.write(f"{emoji} Parcela {p.get('numero_parcela',1)}{data_pg_str} — {fmt_moeda(p.get('valor'))} — {p['status']}")
 
@@ -526,26 +527,29 @@ def _painel_pagamentos_participante(inscricao, evento):
     st.markdown("#### 📎 Enviar novo comprovante")
     proxima_parcela = len(pagamentos) + 1
 
-    with st.form("form_novo_comprovante", clear_on_submit=True):
+    # clear_on_submit=False resolve o problema de apagar tudo ao dar ENTER
+    with st.form("form_novo_comprovante", clear_on_submit=False):
         c_v1, c_v2 = st.columns(2)
         
-        # Campo vem com value=None para forçar a pessoa a digitar o valor exato
         valor_parcela = c_v1.number_input(
             "Valor exato transferido (R$)", min_value=0.01, max_value=float(saldo),
             value=None, placeholder=f"Falta: {fmt_moeda(saldo)}"
         )
         
-        # Novo campo de Data
-        data_pg = c_v2.date_input("Data do Pagamento / Transferência", format="DD/MM/YYYY")
+        # value=None garante que a data venha vazia
+        data_pg = c_v2.date_input("Data do Pagamento / Transferência", format="DD/MM/YYYY", value=None)
         
         comprovante = st.file_uploader("Comprovante do Pix", type=['png', 'jpg', 'jpeg', 'pdf'])
         enviar_pg = st.form_submit_button("Enviar Comprovante", use_container_width=True)
         
         if enviar_pg:
-            if not comprovante:
-                st.warning("⚠️ Anexe o comprovante.")
-            elif valor_parcela is None or valor_parcela <= 0:
+            # Trava para barrar se faltar qualquer um dos 3 campos
+            if valor_parcela is None or valor_parcela <= 0:
                 st.warning("⚠️ Informe o valor que você transferiu.")
+            elif data_pg is None:
+                st.warning("⚠️ Informe a data em que o pagamento foi realizado.")
+            elif not comprovante:
+                st.warning("⚠️ Anexe o arquivo do comprovante.")
             else:
                 url_comp = comprimir_e_fazer_upload(comprovante, pasta="eventos")
                 sucesso = sb_request("inscricao_pagamentos", "POST", {
@@ -559,6 +563,7 @@ def _painel_pagamentos_participante(inscricao, evento):
                 if sucesso is not None:
                     st.cache_data.clear()
                     st.success("✅ Comprovante enviado! A tesouraria irá validar em breve.")
+                    time.sleep(2)
                     st.rerun()
 
 # BLOCO CRÍTICO: GATILHO QUE LIBERA A PÁGINA PÚBLICA E BLOQUEIA A TELA DE LOGIN
