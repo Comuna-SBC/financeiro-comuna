@@ -515,7 +515,9 @@ def _painel_pagamentos_participante(inscricao, evento):
         st.markdown("#### Comprovantes enviados")
         for p in sorted(pagamentos, key=lambda x: x.get("numero_parcela", 1)):
             emoji = {"Pendente": "⏳", "Aprovado": "✅", "Rejeitado": "❌"}.get(p["status"], "")
-            st.write(f"{emoji} Parcela {p.get('numero_parcela',1)} — {fmt_moeda(p.get('valor'))} — {p['status']}")
+            # Mostra a data se ela existir no banco
+            data_pg_str = f" ({pd.to_datetime(p['data_pagamento']).strftime('%d/%m/%Y')})" if p.get('data_pagamento') else ""
+            st.write(f"{emoji} Parcela {p.get('numero_parcela',1)}{data_pg_str} — {fmt_moeda(p.get('valor'))} — {p['status']}")
 
     if saldo <= 0.01:
         st.success("🎉 Inscrição totalmente paga. Nenhum novo comprovante é necessário.")
@@ -523,26 +525,34 @@ def _painel_pagamentos_participante(inscricao, evento):
 
     st.markdown("#### 📎 Enviar novo comprovante")
     proxima_parcela = len(pagamentos) + 1
-    parcelas_totais = evento.get("numero_parcelas") or 1
-    parcelas_restantes = max(parcelas_totais - len(pagamentos), 1) if evento.get("permite_parcelamento") else 1
-    sugestao = min(round(saldo / parcelas_restantes, 2), saldo)
 
     with st.form("form_novo_comprovante", clear_on_submit=True):
-        valor_parcela = st.number_input(
-            "Valor pago nesta parcela (R$)", min_value=0.01, max_value=float(saldo),
-            value=float(sugestao if sugestao > 0 else saldo), format="%.2f"
+        c_v1, c_v2 = st.columns(2)
+        
+        # Campo vem com value=None para forçar a pessoa a digitar o valor exato
+        valor_parcela = c_v1.number_input(
+            "Valor exato transferido (R$)", min_value=0.01, max_value=float(saldo),
+            value=None, placeholder=f"Falta: {fmt_moeda(saldo)}"
         )
+        
+        # Novo campo de Data
+        data_pg = c_v2.date_input("Data do Pagamento / Transferência", format="DD/MM/YYYY")
+        
         comprovante = st.file_uploader("Comprovante do Pix", type=['png', 'jpg', 'jpeg', 'pdf'])
         enviar_pg = st.form_submit_button("Enviar Comprovante", use_container_width=True)
+        
         if enviar_pg:
             if not comprovante:
-                st.warning("Anexe o comprovante.")
+                st.warning("⚠️ Anexe o comprovante.")
+            elif valor_parcela is None or valor_parcela <= 0:
+                st.warning("⚠️ Informe o valor que você transferiu.")
             else:
                 url_comp = comprimir_e_fazer_upload(comprovante, pasta="eventos")
                 sucesso = sb_request("inscricao_pagamentos", "POST", {
                     "inscricao_id": inscricao["id"],
                     "numero_parcela": proxima_parcela,
                     "valor": float(valor_parcela),
+                    "data_pagamento": str(data_pg),
                     "comprovante_url": url_comp,
                     "status": "Pendente"
                 })
