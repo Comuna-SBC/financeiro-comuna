@@ -2569,6 +2569,14 @@ elif page == "Inscrições e Comprovantes":
                                     
                                     if novo_lanc is not None:
                                         lanc_id = novo_lanc[0]['id'] if isinstance(novo_lanc, list) and len(novo_lanc)>0 else None
+                                        
+                                        # 🔗 UNIFICAÇÃO: Vincula o comprovante do evento à tabela de anexos de lançamentos
+                                        if lanc_id and p.get("comprovante_url"):
+                                            sb_request("lancamento_anexos", "POST", [{
+                                                "lancamento_id": lanc_id,
+                                                "arquivo_url": p.get("comprovante_url")
+                                            }])
+                                        
                                         sb_request("inscricao_pagamentos", "PATCH", {"status": "Aprovado", "lancamento_id": lanc_id}, filtros={"id": f"eq.{p['id']}"})
                                         novo_valor_pago = float(insc.get('valor_pago') or 0) + float(p.get('valor') or 0)
                                         novo_status = "Completo" if novo_valor_pago >= float(insc.get('valor_total') or 0) - 0.01 else "Parcial"
