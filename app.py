@@ -2502,7 +2502,10 @@ elif page == "Inscrições e Comprovantes":
                 st.warning("Nenhum evento válido carregado.")
             else:
                 inscricoes_evento = [i for i in carregar("inscricoes") if str(i.get("evento_id")) == str(ev_obj.get("id"))]
-                pagamentos_pendentes = [p for p in carregar("inscricao_pagamentos") if p.get("status"] == "Pendente") if carregar("inscricao_pagamentos") else []
+                
+                raw_pags = carregar("inscricao_pagamentos") or []
+                pagamentos_pendentes = [p for p in raw_pags if p.get("status") == "Pendente"]
+                
                 contas_db = carregar("contas_bancarias") or []
                 nomes_contas = [c["nome"] for c in contas_db]
                 categorias_db = carregar("categorias") or []
@@ -2528,7 +2531,7 @@ elif page == "Inscrições e Comprovantes":
                             data_str = pd.to_datetime(p['data_pagamento']).strftime('%d/%m/%Y') if p.get('data_pagamento') else 'Não informada'
                             st.write(f"💰 **Valor:** {fmt_moeda(p.get('valor'))} &nbsp;|&nbsp; 📅 **Data:** {data_str}")
                             if p.get("comprovante_url"):
-                                link_comp = obter_link_arquivo(p.get("comprovante_url"))
+                                link_comp = obter_link_arquivo(p.get("comprovante_url")) if 'obter_link_arquivo' in globals() else p.get("comprovante_url")
                                 st.markdown(f"📎 [**Ver Comprovante Anexado**]({link_comp if link_comp else '#'})")
                                 
                         with c_conta:
