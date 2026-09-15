@@ -2493,11 +2493,18 @@ elif page == "Inscrições e Comprovantes":
                         col_a, col_b = c4.columns(2)
                         
                         if col_a.button("✅", key=f"aprovar_pg_{p['id']}", help="Aprovar"):
-                            cat_evento_id = next((c['id'] for c in categorias_db if c['nome'] == 'Inscrições de Eventos'), None)
+                            # 1. Busca da Categoria blindada contra erros de digitação (converte tudo pra minúsculo e tira os espaços)
+                            cat_evento_id = next((c['id'] for c in categorias_db if c['nome'].strip().lower() == 'inscrições de eventos'), None)
+                            
+                            # 2. Pega a Data que o participante informou (ou a data de hoje se for um comprovante antigo)
+                            data_pg_aprovada = p.get('data_pagamento') or str(date.today())
+                            
                             novo_lanc = sb_request("lancamentos", "POST", [{
                                 "descricao": f"Inscrição ({insc['nome_participante']} - parcela {p.get('numero_parcela',1)}) - {evento_sel}",
                                 "tipo": "Entrada", "valor": float(p.get('valor') or 0),
-                                "data_competencia": str(date.today()), "status": "Concluído",
+                                "data_competencia": data_pg_aprovada, 
+                                "data_pagamento": data_pg_aprovada,
+                                "status": "Concluído",
                                 "categoria_id": cat_evento_id, "centro_custo": evento_sel
                             }])
                             
