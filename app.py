@@ -2481,84 +2481,98 @@ elif page == "Inscrições e Comprovantes":
         with tab_comprovantes:
             st.markdown("### Comprovantes Aguardando Aprovação")
             
-            # Puxamos os pagamentos pendentes e também a lista de contas bancárias
-            pagamentos_pendentes = [p for p in carregar("inscricao_pagamentos") if p.get("status") == "Pendente"]
-            contas_db = carregar("contas_bancarias")
-            nomes_contas = [c["nome"] for c in contas_db]
-            categorias_db = carregar("categorias")
+            # Recupera com segurança o evento selecionado no escopo pai (seja evento_sel ou evento_selecionado)
+            ev_obj = None
+            for var_name in ['evento_selecionado', 'evento_sel', 'ev_sel']:
+                if var_name in locals() and locals()[var_name]:
+                    ev_obj = locals()[var_name]
+                    break
             
-            # Filtra apenas os pendentes do evento selecionado no painel
-            pendentes_evento = [p for p in pagamentos_pendentes if any(i["id"] == p["inscricao_id"] and i.get("evento_id") == evento_selecionado["id"] for i in inscricoes_evento)]
-            
-            if not pendentes_evento:
-                st.info("✅ Nenhum comprovante pendente para este evento.")
-            else:
-                for p in pendentes_evento:
-                    insc = next((i for i in inscricoes_evento if i["id"] == p["inscricao_id"]), None)
-                    if not insc: continue
-                    
-                    st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
-                    
-                    # Dividimos a tela em 3 colunas: Informações | Seleção de Conta | Botões
-                    c_info, c_conta, c_botoes = st.columns([3, 2, 2])
-                    
-                    with c_info:
-                        st.markdown(f"**👤 {insc['nome_participante']}** (Parcela {p.get('numero_parcela', 1)})")
-                        data_str = pd.to_datetime(p['data_pagamento']).strftime('%d/%m/%Y') if p.get('data_pagamento') else 'Não informada'
-                        st.write(f"💰 **Valor:** {fmt_moeda(p.get('valor'))} &nbsp;|&nbsp; 📅 **Data:** {data_str}")
-                        if p.get("comprovante_url"):
-                            st.markdown(f"📎 [**Ver Comprovante Anexado**]({p['comprovante_url']})")
-                            
-                    with c_conta:
-                        # O campo nasce vazio (index=None) para forçar a atenção do tesoureiro
-                        conta_selecionada = st.selectbox(
-                            "🏦 Conta de Entrada:", 
-                            nomes_contas, 
-                            index=None, 
-                            key=f"conta_dest_{p['id']}",
-                            placeholder="Selecione a conta..."
-                        )
-                        
-                    with c_botoes:
-                        st.write("") # Espaçamento para alinhar com a caixa de texto
-                        col_a, col_r = st.columns(2)
-                        
-                        # BOTÃO APROVAR
-                        if col_a.button("✅ Aprovar", key=f"aprovar_pg_{p['id']}", use_container_width=True, help="Aprovar e lançar no caixa"):
-                            if not conta_selecionada:
-                                st.error("⚠️ Selecione a conta bancária antes de aprovar!")
-                            else:
-                                conta_id = next(c["id"] for c in contas_db if c["nome"] == conta_selecionada)
-                                cat_evento_id = next((c['id'] for c in categorias_db if c['nome'].strip().lower() == 'inscrições de eventos'), None)
-                                data_pg_aprovada = p.get('data_pagamento') or str(date.today())
-                                
-                                # Agora enviamos o conta_id perfeitamente mapeado
-                                novo_lanc = sb_request("lancamentos", "POST", [{
-                                    "descricao": f"Inscrição ({insc['nome_participante']} - parcela {p.get('numero_parcela',1)}) - {evento_selecionado['nome']}",
-                                    "tipo": "Entrada", "valor": float(p.get('valor') or 0),
-                                    "data_competencia": data_pg_aprovada, 
-                                    "data_pagamento": data_pg_aprovada,
-                                    "status": "Concluído",
-                                    "categoria_id": cat_evento_id, 
-                                    "centro_custo": evento_selecionado["nome"],
-                                    "conta_id": conta_id  # <-- Conta Bancária preenchida!
-                                }])
-                                
-                                if novo_lanc is not None:
-                                    lanc_id = novo_lanc[0]['id'] if isinstance(novo_lanc, list) and len(novo_lanc)>0 else None
-                                    sb_request("inscricao_pagamentos", "PATCH", {"status": "Aprovado", "lancamento_id": lanc_id}, filtros={"id": f"eq.{p['id']}"})
-                                    novo_valor_pago = float(insc.get('valor_pago') or 0) + float(p.get('valor') or 0)
-                                    novo_status = "Completo" if novo_valor_pago >= float(insc.get('valor_total') or 0) - 0.01 else "Parcial"
-                                    sb_request("inscricoes", "PATCH", {"valor_pago": novo_valor_pago, "status_pagamento": novo_status}, filtros={"id": f"eq.{insc['id']}"})
-                                    
-                                    st.cache_data.clear()
-                                    st.rerun()
+            # Fallback caso não ache na 1ª tentativa
+            if not ev_obj:
+                evs_list = carregar("eventos")
+                ev_obj = evs_list[0] if evs_list else None
 
-                        # BOTÃO REJEITAR
-                        if col_r.button("❌ Rejeitar", key=f"rejeitar_pg_{p['id']}", use_container_width=True):
-                            sb_request("inscricao_pagamentos", "PATCH", {"status": "Rejeitado"}, filtros={"id": f"eq.{p['id']}"})
-                            st.cache_data.clear()
-                            st.rerun()
+            if not ev_obj:
+                st.warning("Nenhum evento carregado.")
+            else:
+                inscricoes_evento = [i for i in carregar("inscricoes") if str(i.get("evento_id")) == str(ev_obj.get("id"))]
+                pagamentos_pendentes = [p for p in carregar("inscricao_pagamentos") if p.get("status") == "Pendente"]
+                contas_db = carregar("contas_bancarias")
+                nomes_contas = [c["nome"] for c in contas_db]
+                categorias_db = carregar("categorias")
+                
+                pendentes_evento = [
+                    p for p in pagamentos_pendentes 
+                    if any(str(i["id"]) == str(p.get("inscricao_id")) for i in inscricoes_evento)
+                ]
+                
+                if not pendentes_evento:
+                    st.info("✅ Nenhum comprovante pendente para este evento.")
+                else:
+                    for p in pendentes_evento:
+                        insc = next((i for i in inscricoes_evento if str(i["id"]) == str(p.get("inscricao_id"))), None)
+                        if not insc: continue
+                        
+                        st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
+                        
+                        c_info, c_conta, c_botoes = st.columns([3, 2, 2])
+                        
+                        with c_info:
+                            st.markdown(f"**👤 {insc['nome_participante']}** (Parcela {p.get('numero_parcela', 1)})")
+                            data_str = pd.to_datetime(p['data_pagamento']).strftime('%d/%m/%Y') if p.get('data_pagamento') else 'Não informada'
+                            st.write(f"💰 **Valor:** {fmt_moeda(p.get('valor'))} &nbsp;|&nbsp; 📅 **Data:** {data_str}")
+                            if p.get("comprovante_url"):
+                                st.markdown(f"📎 [**Ver Comprovante Anexado**]({p['comprovante_url']})")
+                                
+                        with c_conta:
+                            conta_selecionada = st.selectbox(
+                                "🏦 Conta de Entrada:", 
+                                nomes_contas, 
+                                index=None, 
+                                key=f"conta_dest_{p['id']}",
+                                placeholder="Selecione a conta..."
+                            )
+                            
+                        with c_botoes:
+                            st.write("")
+                            col_a, col_r = st.columns(2)
+                            
+                            # BOTÃO APROVAR
+                            if col_a.button("✅ Aprovar", key=f"aprovar_pg_{p['id']}", use_container_width=True, help="Aprovar e lançar no caixa"):
+                                if not conta_selecionada:
+                                    st.error("⚠️ Selecione a conta bancária antes de aprovar!")
+                                else:
+                                    conta_id = next(c["id"] for c in contas_db if c["nome"] == conta_selecionada)
+                                    cat_evento_id = next((c['id'] for c in categorias_db if c['nome'].strip().lower() == 'inscrições de eventos'), None)
+                                    data_pg_aprovada = p.get('data_pagamento') or str(date.today())
+                                    
+                                    novo_lanc = sb_request("lancamentos", "POST", [{
+                                        "descricao": f"Inscrição ({insc['nome_participante']} - parcela {p.get('numero_parcela',1)}) - {ev_obj['nome']}",
+                                        "tipo": "Entrada", "valor": float(p.get('valor') or 0),
+                                        "data_competencia": data_pg_aprovada, 
+                                        "data_pagamento": data_pg_aprovada,
+                                        "status": "Concluído",
+                                        "categoria_id": cat_evento_id, 
+                                        "centro_custo": ev_obj["nome"],
+                                        "conta_id": conta_id
+                                    }])
+                                    
+                                    if novo_lanc is not None:
+                                        lanc_id = novo_lanc[0]['id'] if isinstance(novo_lanc, list) and len(novo_lanc)>0 else None
+                                        sb_request("inscricao_pagamentos", "PATCH", {"status": "Aprovado", "lancamento_id": lanc_id}, filtros={"id": f"eq.{p['id']}"})
+                                        novo_valor_pago = float(insc.get('valor_pago') or 0) + float(p.get('valor') or 0)
+                                        novo_status = "Completo" if novo_valor_pago >= float(insc.get('valor_total') or 0) - 0.01 else "Parcial"
+                                        sb_request("inscricoes", "PATCH", {"valor_pago": novo_valor_pago, "status_pagamento": novo_status}, filtros={"id": f"eq.{insc['id']}"})
+                                        
+                                        st.cache_data.clear()
+                                        st.rerun()
+
+                            # BOTÃO REJEITAR
+                            if col_r.button("❌ Rejeitar", key=f"rejeitar_pg_{p['id']}", use_container_width=True):
+                                sb_request("inscricao_pagamentos", "PATCH", {"status": "Rejeitado"}, filtros={"id": f"eq.{p['id']}"})
+                                st.cache_data.clear()
+                                st.rerun()
         with tab_lista:
             if not ev_tem_participantes:
                 st.info("💡 Este projeto é do tipo Campanha/Arrecadação e não possui lista nominal de participantes. Acompanhe os totais diretamente na aba Visão Consolidada ou no Analytics.")
