@@ -2481,26 +2481,31 @@ elif page == "Inscrições e Comprovantes":
         with tab_comprovantes:
             st.markdown("### Comprovantes Aguardando Aprovação")
             
-            # Recupera com segurança o evento selecionado no escopo pai (seja evento_sel ou evento_selecionado)
+            evs_list = carregar("eventos") or []
             ev_obj = None
-            for var_name in ['evento_selecionado', 'evento_sel', 'ev_sel']:
-                if var_name in locals() and locals()[var_name]:
-                    ev_obj = locals()[var_name]
-                    break
             
-            # Fallback caso não ache na 1ª tentativa
-            if not ev_obj:
-                evs_list = carregar("eventos")
-                ev_obj = evs_list[0] if evs_list else None
+            # Tenta pegar do contexto da página atual de forma segura
+            if 'evento_obj_sel' in locals() and isinstance(locals()['evento_obj_sel'], dict):
+                ev_obj = locals()['evento_obj_sel']
+            elif 'evento_id_sel' in locals():
+                ev_obj = next((e for e in evs_list if str(e.get("id")) == str(locals()['evento_id_sel'])), None)
+            
+            # Se não achou pelo escopo, tenta pelo seletor de nome da página
+            if not ev_obj and 'evento_sel' in locals() and isinstance(locals()['evento_sel'], str):
+                ev_obj = next((e for e in evs_list if e.get("nome") == locals()['evento_sel']), None)
+                
+            # Fallback seguro para o primeiro evento caso não localize
+            if not ev_obj and evs_list:
+                ev_obj = evs_list[0]
 
-            if not ev_obj:
-                st.warning("Nenhum evento carregado.")
+            if not ev_obj or not isinstance(ev_obj, dict):
+                st.warning("Nenhum evento válido carregado.")
             else:
                 inscricoes_evento = [i for i in carregar("inscricoes") if str(i.get("evento_id")) == str(ev_obj.get("id"))]
-                pagamentos_pendentes = [p for p in carregar("inscricao_pagamentos") if p.get("status") == "Pendente"]
-                contas_db = carregar("contas_bancarias")
+                pagamentos_pendentes = [p for p in carregar("inscricao_pagamentos") if p.get("status"] == "Pendente") if carregar("inscricao_pagamentos") else []
+                contas_db = carregar("contas_bancarias") or []
                 nomes_contas = [c["nome"] for c in contas_db]
-                categorias_db = carregar("categorias")
+                categorias_db = carregar("categorias") or []
                 
                 pendentes_evento = [
                     p for p in pagamentos_pendentes 
@@ -2519,11 +2524,12 @@ elif page == "Inscrições e Comprovantes":
                         c_info, c_conta, c_botoes = st.columns([3, 2, 2])
                         
                         with c_info:
-                            st.markdown(f"**👤 {insc['nome_participante']}** (Parcela {p.get('numero_parcela', 1)})")
+                            st.markdown(f"**👤 {insc.get('nome_participante', 'Participante')}** (Parcela {p.get('numero_parcela', 1)})")
                             data_str = pd.to_datetime(p['data_pagamento']).strftime('%d/%m/%Y') if p.get('data_pagamento') else 'Não informada'
                             st.write(f"💰 **Valor:** {fmt_moeda(p.get('valor'))} &nbsp;|&nbsp; 📅 **Data:** {data_str}")
                             if p.get("comprovante_url"):
-                                st.markdown(f"📎 [**Ver Comprovante Anexado**]({p['comprovante_url']})")
+                                link_comp = obter_link_arquivo(p.get("comprovante_url"))
+                                st.markdown(f"📎 [**Ver Comprovante Anexado**]({link_comp if link_comp else '#'})")
                                 
                         with c_conta:
                             conta_selecionada = st.selectbox(
@@ -2544,18 +2550,18 @@ elif page == "Inscrições e Comprovantes":
                                     st.error("⚠️ Selecione a conta bancária antes de aprovar!")
                                 else:
                                     conta_id = next(c["id"] for c in contas_db if c["nome"] == conta_selecionada)
-                                    cat_evento_id = next((c['id'] for c in categorias_db if c['nome'].strip().lower() == 'inscrições de eventos'), None)
+                                    cat_evento_id = next((c['id'] for c in categorias_db if c.get('nome', '').strip().lower() == 'inscrições de eventos'), None)
                                     data_pg_aprovada = p.get('data_pagamento') or str(date.today())
                                     
                                     novo_lanc = sb_request("lancamentos", "POST", [{
-                                        "descricao": f"Inscrição ({insc['nome_participante']} - parcela {p.get('numero_parcela',1)}) - {ev_obj['nome']}",
+                                        "descricao": f"Inscrição ({insc.get('nome_participante')} - parcela {p.get('numero_parcela',1)}) - {ev_obj.get('nome')}",
                                         "tipo": "Entrada", "valor": float(p.get('valor') or 0),
                                         "data_competencia": data_pg_aprovada, 
                                         "data_pagamento": data_pg_aprovada,
                                         "status": "Concluído",
                                         "categoria_id": cat_evento_id, 
-                                        "centro_custo": ev_obj["nome"],
-                                        "conta_id": conta_id
+                                        "centro_custo": ev_obj.get("nome"),
+                                        "conta_bancaria_id": conta_id
                                     }])
                                     
                                     if novo_lanc is not None:
