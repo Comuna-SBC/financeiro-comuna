@@ -2785,13 +2785,31 @@ elif page == "Categorias":
 # ==========================================
 # ==========================================
 # ==========================================
+# ==========================================
 # ANALYTICS FINANCEIRO
 # ==========================================
 elif page == "Analytics Financeiro":
     st.title("Analytics Financeiro")
     
-    # Reduz o tamanho da fonte dos números nos cards (ajuste o 22px se quiser maior ou menor)
-    st.markdown('<style>[data-testid="stMetricValue"] {font-size: 22px !important;}</style>', unsafe_allow_html=True)
+    # CSS avançado para forçar a exibição do número completo nos cards
+    st.markdown('''
+    <style>
+    /* Reduz a fonte do número principal */
+    [data-testid="stMetricValue"] {
+        font-size: 18px !important;
+    }
+    /* Desativa as reticências (...) e permite que o número apareça inteiro */
+    [data-testid="stMetricValue"] > div {
+        overflow: visible !important;
+        white-space: normal !important;
+        text-overflow: clip !important;
+    }
+    /* Reduz levemente o título do card para dar mais espaço */
+    [data-testid="stMetricLabel"] {
+        font-size: 14px !important;
+    }
+    </style>
+    ''', unsafe_allow_html=True)
     
     df = carregar_lancamentos_df()
 
