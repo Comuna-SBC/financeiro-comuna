@@ -1606,10 +1606,10 @@ elif page == "Tesouraria":
                                         "data_competencia": str(n_data),
                                         "status": n_status,
                                         "categoria_id": n_cat_id,
-                                        "categoria_nome": n_cat_nome,
-                                        "conta_bancaria_id": n_conta_id,
-                                        "conta_nome": n_conta_nome
+                                        "conta_bancaria_id": n_conta_id
                                     }
+                                    # Os campos visuais "categoria_nome" e "conta_nome" foram removidos do payload para evitar o Erro 400
+                                    
                                     sb_request("lancamentos", "PATCH", payload, filtros={"id": f"eq.{row_id}"})
                                     if novos_arq_edicao:
                                         processar_e_salvar_anexos(novos_arq_edicao, row_id, n_data, n_cat_nome, n_desc)
@@ -1744,12 +1744,11 @@ elif page == "Tesouraria":
                                     st.success("Regra atualizada com sucesso!")
                                     time.sleep(1)
                                     st.rerun()
-                                
+                            
                             if col_s2.form_submit_button("❌ Cancelar", use_container_width=True):
                                 st.session_state[f"editing_rec_{rec_id}"] = False
                                 st.rerun()
-                st.markdown("<hr style='margin:6px 0;border:none;border-top:1px solid #E2E8F0;'>", unsafe_allow_html=True)
-
+            st.markdown("<hr style='margin:6px 0;border:none;border-top:1px solid #E2E8F0;'>", unsafe_allow_html=True)
 # ==========================================
 # CONCILIAÇÃO BANCÁRIA
 # ==========================================
