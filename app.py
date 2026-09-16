@@ -2783,6 +2783,7 @@ elif page == "Categorias":
 
 # ==========================================
 # ==========================================
+# ==========================================
 # ANALYTICS FINANCEIRO
 # ==========================================
 elif page == "Analytics Financeiro":
@@ -2802,17 +2803,40 @@ elif page == "Analytics Financeiro":
         if ignorar_eventos:
             df_filtrado = df_filtrado[df_filtrado['centro_custo'].isnull()]
 
+        # Totais do período filtrado para os 3 primeiros cards
         entradas = df_filtrado[df_filtrado['tipo'] == 'Entrada']['valor'].sum()
         saidas = df_filtrado[df_filtrado['tipo'] == 'Saída']['valor'].sum()
-        reserva = sum(float(c.get('saldo_inicial') or 0) for c in contas_bancarias_db if c.get('tipo') == 'Investimento')
+        
+        # --- CÁLCULO DE CAIXA REAL E PROJETADO (GLOBAL) ---
+        df_concluido = df[df['status'] == 'Concluído'] if 'status' in df.columns else df
+        df_pendente = df[df['status'] == 'Pendente'] if 'status' in df.columns else pd.DataFrame()
+        
+        saldo_inicial_total = sum(float(c.get('saldo_inicial') or 0) for c in contas_bancarias_db)
+        
+        # 1. Caixa Real Hoje
+        entradas_realizadas = df_concluido[df_concluido['tipo'] == 'Entrada']['valor'].sum()
+        saidas_realizadas = df_concluido[df_concluido['tipo'] == 'Saída']['valor'].sum()
+        caixa_real = saldo_inicial_total + entradas_realizadas - saidas_realizadas
+        
+        # 2. Saldo Projetado (Caixa Real + Entradas Pendentes - Saídas Pendentes)
+        entradas_pendentes = df_pendente[df_pendente['tipo'] == 'Entrada']['valor'].sum() if not df_pendente.empty else 0
+        saidas_pendentes = df_pendente[df_pendente['tipo'] == 'Saída']['valor'].sum() if not df_pendente.empty else 0
+        saldo_projetado = caixa_real + entradas_pendentes - saidas_pendentes
+        
+        # 3. Fôlego de Caixa (usando o Caixa Real)
         media_saidas = saidas / len(mes_sel) if len(mes_sel) > 0 and saidas > 0 else 1
-        meses_reserva = reserva / media_saidas if media_saidas > 0 else 0
+        meses_reserva = caixa_real / media_saidas if media_saidas > 0 and caixa_real > 0 else 0
 
-        col_k1, col_k2, col_k3, col_k4 = st.columns(4)
+        # --- CARDS SUPERIORES ---
+        col_k1, col_k2, col_k3, col_k4, col_k5 = st.columns(5)
         col_k1.metric("Total Entradas", fmt_moeda(entradas))
         col_k2.metric("Total Saídas", fmt_moeda(saidas))
         col_k3.metric("Resultado", fmt_moeda(entradas - saidas))
-        col_k4.metric("Fôlego de Caixa", f"{meses_reserva:.1f} Meses")
+        col_k4.metric("Fôlego de Caixa", f"{meses_reserva:.1f} Meses", help="Calculado com base no seu Caixa Real dividido pela média mensal de gastos filtrada.")
+        
+        # Novo card com cor condicional (vermelho se a projeção for negativa)
+        delta_projecao = "- Risco de Caixa" if saldo_projetado < 0 else None
+        col_k5.metric("Projeção de Caixa", fmt_moeda(saldo_projetado), delta=delta_projecao, delta_color="inverse", help="Saldo de hoje abatendo todas as saídas pendentes e somando entradas pendentes.")
 
         st.markdown("---")
         st.subheader("Evolução Mensal (Entradas vs Saídas vs Metas)")
@@ -2842,7 +2866,6 @@ elif page == "Analytics Financeiro":
                 fig.add_scatter(x=df_agrupado.index, y=[metas_map.get(m, {}).get('meta_saidas') for m in df_agrupado.index],
                                name='Teto Saídas', mode='lines+markers', connectgaps=True, line=dict(color='#991B1B', dash='dot'))
             
-            # Formatação crucial do eixo X para não bugar com meses únicos
             fig.update_xaxes(type='category')
             fig.update_layout(barmode='group', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='#1E293B', legend_title_text='')
             st.plotly_chart(fig, use_container_width=True)
