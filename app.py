@@ -2784,10 +2784,15 @@ elif page == "Categorias":
 # ==========================================
 # ==========================================
 # ==========================================
+# ==========================================
 # ANALYTICS FINANCEIRO
 # ==========================================
 elif page == "Analytics Financeiro":
     st.title("Analytics Financeiro")
+    
+    # Reduz o tamanho da fonte dos números nos cards (ajuste o 22px se quiser maior ou menor)
+    st.markdown('<style>[data-testid="stMetricValue"] {font-size: 22px !important;}</style>', unsafe_allow_html=True)
+    
     df = carregar_lancamentos_df()
 
     if df.empty:
