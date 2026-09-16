@@ -2783,6 +2783,7 @@ elif page == "Categorias":
         st.dataframe(df_cats, use_container_width=True, hide_index=True)
 
 # ==========================================
+# ==========================================
 # ANALYTICS FINANCEIRO
 # ==========================================
 elif page == "Analytics Financeiro":
@@ -2838,11 +2839,15 @@ elif page == "Analytics Financeiro":
             
             if metas_map:
                 fig.add_scatter(x=df_agrupado.index, y=[metas_map.get(m, {}).get('meta_entradas') for m in df_agrupado.index],
-                               name='Meta Entradas', mode='lines+markers', line=dict(color='#1E40AF', dash='dot'))
+                               name='Meta Entradas', mode='lines+markers', connectgaps=True, line=dict(color='#1E40AF', dash='dot'))
                 fig.add_scatter(x=df_agrupado.index, y=[metas_map.get(m, {}).get('meta_saidas') for m in df_agrupado.index],
-                               name='Teto Saídas', mode='lines+markers', line=dict(color='#991B1B', dash='dot'))
+                               name='Teto Saídas', mode='lines+markers', connectgaps=True, line=dict(color='#991B1B', dash='dot'))
+            
+            # Formatação crucial do eixo X para não bugar com meses únicos
+            fig.update_xaxes(type='category')
             fig.update_layout(barmode='group', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='#1E293B', legend_title_text='')
             st.plotly_chart(fig, use_container_width=True)
+            
         st.markdown("---")
         col_g1, col_g2 = st.columns(2)
 
