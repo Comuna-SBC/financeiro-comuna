@@ -2791,22 +2791,17 @@ elif page == "Categorias":
 elif page == "Analytics Financeiro":
     st.title("Analytics Financeiro")
     
-    # CSS avançado para forçar a exibição do número completo nos cards
+    # CSS focado APENAS em reduzir o tamanho da fonte para não estourar os cards
     st.markdown('''
     <style>
-    /* Reduz a fonte do número principal */
     [data-testid="stMetricValue"] {
-        font-size: 18px !important;
+        font-size: 16px !important;
     }
-    /* Desativa as reticências (...) e permite que o número apareça inteiro */
     [data-testid="stMetricValue"] > div {
-        overflow: visible !important;
-        white-space: normal !important;
-        text-overflow: clip !important;
+        font-size: 16px !important;
     }
-    /* Reduz levemente o título do card para dar mais espaço */
     [data-testid="stMetricLabel"] {
-        font-size: 14px !important;
+        font-size: 12px !important;
     }
     </style>
     ''', unsafe_allow_html=True)
