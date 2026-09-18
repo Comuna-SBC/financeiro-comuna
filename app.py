@@ -1799,9 +1799,11 @@ elif page == "Tesouraria":
                             e_tipo = st.selectbox("Tipo", ["Entrada", "Saída"], index=0 if rec_row['tipo'] == "Entrada" else 1, key=f"ed_rec_tipo_{rec_id}")
                             e_desc = st.text_input("Descrição", value=rec_row['descricao'], key=f"ed_rec_desc_{rec_id}")
                             
-                            c_val_dia = st.columns(2)
+                            # Adicionado campo de Frequência
+                            c_val_dia = st.columns(3)
                             e_valor = c_val_dia[0].number_input("Valor Base (R$)", value=float(rec_row['valor'] or 0), format="%.2f", key=f"ed_rec_val_{rec_id}")
                             e_dia = c_val_dia[1].number_input("Dia Fixo de Vencimento", min_value=1, max_value=31, value=int(rec_row.get('dia_vencimento_fixo') or 10), step=1, key=f"ed_rec_dia_{rec_id}")
+                            e_freq = c_val_dia[2].number_input("Frequência (meses)", min_value=1, max_value=12, value=int(rec_row.get('frequencia_meses') or 1), step=1, key=f"ed_rec_freq_{rec_id}")
                             
                             cats_r_edit = [c for c in categorias_db if c.get("tipo") == e_tipo]
                             opcoes_cats_r = {c["nome"]: c["id"] for c in cats_r_edit}
@@ -1810,6 +1812,20 @@ elif page == "Tesouraria":
                             
                             e_cat = st.selectbox("Categoria", list(opcoes_cats_r.keys()) if opcoes_cats_r else ["-"], index=idx_c, key=f"ed_rec_cat_{rec_id}")
                             
+                            # Adicionado Conta e Projeto/Evento
+                            contas_opcoes = {"Nenhuma": None} | {c["nome"]: c["id"] for c in contas_bancarias_db}
+                            atual_conta_id = rec_row.get('conta_bancaria_id')
+                            nome_conta_atual = next((nome for nome, idx in contas_opcoes.items() if idx == atual_conta_id), "Nenhuma")
+                            idx_conta = list(contas_opcoes.keys()).index(nome_conta_atual) if nome_conta_atual in contas_opcoes else 0
+                            
+                            opcoes_tags = ["Nenhum"] + [e['nome'] for e in eventos_db]
+                            atual_tag = rec_row.get('centro_custo')
+                            idx_tag = opcoes_tags.index(atual_tag) if atual_tag in opcoes_tags else 0
+
+                            col_ct1, col_ct2 = st.columns(2)
+                            e_conta = col_ct1.selectbox("Conta Bancária Principal", list(contas_opcoes.keys()), index=idx_conta, key=f"ed_rec_conta_{rec_id}")
+                            e_tag = col_ct2.selectbox("Projeto / Evento", opcoes_tags, index=idx_tag, key=f"ed_rec_tag_{rec_id}")
+
                             col_d1, col_d2 = st.columns(2)
                             e_dt_ini = col_d1.date_input("Data Inicial (De)", pd.to_datetime(rec_row['data_competencia']).date() if pd.notna(rec_row.get('data_competencia')) else date.today(), format="DD.MM.YYYY", key=f"ed_rec_de_{rec_id}")
                             e_dt_fim = col_d2.date_input("Data Final (Até)", pd.to_datetime(rec_row['data_fim_recorrencia']).date() if pd.notna(rec_row.get('data_fim_recorrencia')) else date.today() + pd.DateOffset(months=12), format="DD.MM.YYYY", key=f"ed_rec_ate_{rec_id}")
@@ -1821,7 +1837,10 @@ elif page == "Tesouraria":
                                     "tipo": e_tipo,
                                     "valor": float(e_valor),
                                     "dia_vencimento_fixo": int(e_dia),
+                                    "frequencia_meses": int(e_freq),
                                     "categoria_id": opcoes_cats_r[e_cat] if opcoes_cats_r else None,
+                                    "conta_bancaria_id": contas_opcoes[e_conta],
+                                    "centro_custo": None if e_tag == "Nenhum" else e_tag,
                                     "data_competencia": str(e_dt_ini),
                                     "data_vencimento": str(e_dt_ini),
                                     "data_fim_recorrencia": str(e_dt_fim)
