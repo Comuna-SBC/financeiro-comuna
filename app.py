@@ -93,71 +93,63 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-def verificar_e_gerar_recorrencias(df_all):
-    if st.session_state.get("motor_recorrencia_rodou") or df_all.empty:
+def verificar_e_gerar_recorrencias(df_lancamentos_atuais):
+    if st.session_state.get("motor_recorrencia_rodou"):
         return
 
-    from datetime import datetime, date
-    from zoneinfo import ZoneInfo
     import pandas as pd
     import calendar
 
-    # Fuso horário garantido dentro do robô
-    hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+    hoje = hoje_sp()
     mes_atual = hoje.month
     ano_atual = hoje.year
 
-    # 1. Isola apenas as Regras Mães (Contratos)
-    regras_ativas = df_all[df_all['recorrente'] == True]
-    
-    if regras_ativas.empty:
+    # 1. Busca as regras na tabela nova
+    regras = sb_request("regras_recorrentes", "GET")
+    if not regras:
         st.session_state["motor_recorrencia_rodou"] = True
         return
-
+        
+    df_regras = pd.DataFrame(regras)
     novos_lancamentos = []
     
-    for _, regra in regras_ativas.iterrows():
+    for _, regra in df_regras.iterrows():
         if pd.isna(regra.get('data_competencia')):
             continue
             
         dt_inicio = pd.to_datetime(regra['data_competencia']).date()
-        
-        # Ignora se a regra for programada para o futuro
         if hoje < dt_inicio:
             continue 
 
-        # Ignora se a regra já passou da data de validade
         if pd.notna(regra.get('data_fim_recorrencia')):
             fim_regra = pd.to_datetime(regra['data_fim_recorrencia']).date()
             if hoje > fim_regra:
                 continue 
 
-        # 2. Matemática de Frequência (Pula os meses corretos se não for mensal)
         freq = int(regra.get('frequencia_meses') or 1)
         meses_passados = (ano_atual - dt_inicio.year) * 12 + (mes_atual - dt_inicio.month)
         
-        # Se a diferença de meses não for o ciclo exato da frequência, pula este mês
         if meses_passados % freq != 0:
             continue
 
-        # 3. Verifica se JÁ EXISTE a cobrança gerada para ESTE MÊS (Mãe ou Filho)
-        ja_lancado_este_mes = df_all[
-            (df_all['descricao'] == regra['descricao']) &
-            (pd.to_datetime(df_all['data_competencia']).dt.month == mes_atual) &
-            (pd.to_datetime(df_all['data_competencia']).dt.year == ano_atual)
-        ]
+        # 2. Verifica na tabela antiga se a parcela DESTE mês já existe
+        if not df_lancamentos_atuais.empty:
+            ja_lancado = df_lancamentos_atuais[
+                (df_lancamentos_atuais['descricao'] == regra['descricao']) &
+                (pd.to_datetime(df_lancamentos_atuais['data_competencia']).dt.month == mes_atual) &
+                (pd.to_datetime(df_lancamentos_atuais['data_competencia']).dt.year == ano_atual)
+            ]
+        else:
+            ja_lancado = pd.DataFrame()
 
-        if ja_lancado_este_mes.empty:
-            # Não tem cobrança neste mês! O Robô gera o Filho.
+        # 3. Se não existe, o robô gera o Filho Real
+        if ja_lancado.empty:
             dia_venc = int(regra.get('dia_vencimento_fixo') or 10)
-            
-            # Tratativa anti-bug para meses que terminam dia 28/30
             ultimo_dia_mes = calendar.monthrange(ano_atual, mes_atual)[1]
             dia_seguro = min(dia_venc, ultimo_dia_mes)
-            
             dt_nova_comp = date(ano_atual, mes_atual, dia_seguro)
 
-            novo_filho = {
+            novos_lancamentos.append({
                 "descricao": regra['descricao'],
                 "tipo": regra['tipo'],
                 "valor": float(regra['valor']),
@@ -166,19 +158,16 @@ def verificar_e_gerar_recorrencias(df_all):
                 "status": "Pendente",
                 "categoria_id": regra.get('categoria_id'),
                 "conta_bancaria_id": regra.get('conta_bancaria_id'),
-                "centro_custo": regra.get('centro_custo'),
-                "recorrente": False # IMPORTANTE: O filho NUNCA é uma regra!
-            }
-            novos_lancamentos.append(novo_filho)
+                "centro_custo": regra.get('centro_custo')
+            })
 
-    # 4. Dispara todos os filhos gerados para o banco de uma vez só
+    # 4. Dispara todos de uma vez
     if novos_lancamentos:
         res = sb_request("lancamentos", "POST", novos_lancamentos)
         if res:
             st.cache_data.clear()
-            st.toast(f"🤖 Robô gerou {len(novos_lancamentos)} lançamentos recorrentes para este mês!", icon="🚀")
+            st.toast(f"🤖 Robô gerou {len(novos_lancamentos)} parcelas recorrentes para este mês!", icon="🚀")
 
-    # Marca para não ficar processando isso a cada clique no sistema
     st.session_state["motor_recorrencia_rodou"] = True
 
 # ==========================================
@@ -1251,7 +1240,7 @@ elif page == "Tesouraria":
     ], key="tesouraria_active_tab", on_change="rerun")
 
     with tab1:
-        st.markdown("### Registrar Movimentação")
+        st.markdown("### 📝 Registrar Movimentação")
         
         tipo_lanc = st.radio("Tipo", ["Entrada", "Saída"], horizontal=True, key="novo_lanc_tipo")
         recorrente = st.checkbox("🔁 Este é um lançamento recorrente (despesa ou receita fixa mensal)", key="novo_lanc_rec")
@@ -1260,14 +1249,11 @@ elif page == "Tesouraria":
             if recorrente:
                 st.info("💡 Modo Recorrente Ativo: Defina o valor base, frequência, e até quando essa regra se repete.")
                 
-                # UX: Adicionado "Frequência" e layout ajustado
                 col_r1, col_r2, col_r3 = st.columns(3)
-                # UX: value=None e placeholder tira o 0.00 inicial
                 valor = col_r1.number_input("Valor Base (R$)", min_value=0.0, step=50.0, format="%.2f", value=None, placeholder="0,00", key="rec_valor")
                 dia_vencimento = col_r2.number_input("Dia Fixo de Vencimento", min_value=1, max_value=31, value=10, step=1, key="rec_dia")
                 freq_meses = col_r3.number_input("Frequência (a cada X meses)", min_value=1, max_value=12, value=1, step=1, key="rec_freq")
                 
-                # UX: Adicionado Data de Início
                 col_r_new1, col_r_new2 = st.columns(2)
                 data_inicio_rec = col_r_new1.date_input("Data de Início", hoje_sp(), format="DD.MM.YYYY", key="rec_ini")
                 data_fim_rec = col_r_new2.date_input("Data Final da Recorrência", hoje_sp() + pd.DateOffset(months=12), format="DD.MM.YYYY", key="rec_fim")
@@ -1283,32 +1269,26 @@ elif page == "Tesouraria":
                 conta_sel = st.selectbox("Conta Bancária Principal", list(contas_opcoes.keys()), key="rec_conta")
                 tag = st.selectbox("Projeto / Evento", ["Nenhum"] + [e['nome'] for e in eventos_db], key="rec_tag")
                 
-                data_comp = data_inicio_rec
-                status_lanc = "Pendente"
-                data_venc = data_inicio_rec
+                arquivos = [] # Regras matrizes não levam anexos diretos na criação
 
             else:
                 col1, col2, col3 = st.columns(3)
-                # UX: value=None para limpar o campo
                 valor = col1.number_input("Valor (R$)", min_value=0.0, step=50.0, format="%.2f", value=None, placeholder="0,00", key="unico_valor")
                 
                 if tipo_lanc == "Saída":
                     st.caption("📅 Mês de Competência Contábil (Referência MM.YYYY)")
                     cc_m, cc_a = col2.columns(2)
-                    # UX: Textos ajustados
                     mes_comp_sel = cc_m.selectbox("Mês-Competência", MESES_PT, index=hoje_sp().month-1, key="unico_mes_comp")
                     ano_comp_sel = cc_a.number_input("Ano-Competência", min_value=2020, max_value=2100, value=hoje_sp().year, step=1, key="unico_ano_comp")
                     
                     idx_mes = MESES_PT.index(mes_comp_sel) + 1
                     data_comp = date(int(ano_comp_sel), idx_mes, 1)
                     
-                    # UX: "Pendente" colocado primeiro para ser o padrão selecionado
                     status_lanc = col3.selectbox("Situação", ["Pendente", "Concluído"], key="unico_status")
                     label_data = "Data de Pagamento" if status_lanc == "Concluído" else "Data de Vencimento"
                     data_venc = st.date_input(label_data, hoje_sp(), format="DD.MM.YYYY", key="unico_venc")
                 else:
                     data_comp = col2.date_input("Data de Recebimento", hoje_sp(), format="DD.MM.YYYY", key="unico_data_ent")
-                    # UX: "Pendente" colocado primeiro
                     status_lanc = col3.selectbox("Situação", ["Pendente", "Concluído"], key="unico_status_ent")
                     data_venc = data_comp
 
@@ -1324,55 +1304,72 @@ elif page == "Tesouraria":
                 conta_sel = col6.selectbox("Conta Bancária", list(contas_opcoes.keys()), key="unico_conta")
                 tag = col7.selectbox("Projeto / Evento", ["Nenhum"] + [e['nome'] for e in eventos_db], key="unico_tag")
 
-            # MANTIDO: Seu código de upload intacto
-            arquivos = st.file_uploader(
-                "Comprovantes / Notas Fiscais (Permite múltiplos arquivos)", 
-                type=['png', 'jpg', 'jpeg', 'pdf'], 
-                accept_multiple_files=True, 
-                key="lanc_arq_up_multiplo"
-            )
+                # REINSERIDO: Seu uploader de arquivos original intacto
+                arquivos = st.file_uploader(
+                    "Comprovantes / Notas Fiscais (Permite múltiplos arquivos)", 
+                    type=['png', 'jpg', 'jpeg', 'pdf'], 
+                    accept_multiple_files=True, 
+                    key="lanc_arq_up_multiplo"
+                )
 
-            if st.form_submit_button("💾 Salvar Lançamento", use_container_width=True, type="primary"):
-                # UX: Adicionado "valor is None" para validar caso o usuário não digite nada no novo input limpo
+            if st.form_submit_button("💾 Salvar Movimentação", use_container_width=True, type="primary"):
                 if valor is None or valor <= 0 or not descricao or not opcoes_cats:
                     st.warning("⚠️ Preencha descrição, valor e categoria corretamente.")
                 else:
-                    with st.spinner("Salvando lançamento e anexos..."):
-                        # MANTIDO: Toda a sua lógica de payload e request intacta!
-                        payload_lanc = {
-                            "descricao": descricao,
-                            "tipo": tipo_lanc,
-                            "valor": float(valor),
-                            "data_competencia": str(data_comp),
-                            "data_vencimento": str(data_venc),
-                            "status": status_lanc,
-                            "categoria_id": opcoes_cats[categoria_sel],
-                            "conta_bancaria_id": contas_opcoes.get(conta_sel),
-                            "centro_custo": None if tag == "Nenhum" else tag,
-                            "recorrente": bool(recorrente)
-                        }
-                        
+                    with st.spinner("Salvando registro..."):
                         if recorrente:
-                            payload_lanc["dia_vencimento_fixo"] = int(dia_vencimento)
-                            payload_lanc["data_fim_recorrencia"] = str(data_fim_rec)
-                            payload_lanc["frequencia_meses"] = int(freq_meses) # Inserindo o novo dado no BD
-
-                        if status_lanc == "Concluído":
-                            payload_lanc["data_pagamento"] = str(data_venc)
-
-                        res_lanc = sb_request("lancamentos", "POST", [payload_lanc])
-                        
-                        if res_lanc and len(res_lanc) > 0:
-                            novo_id = res_lanc[0]['id']
-                            if arquivos:
-                                processar_e_salvar_anexos(arquivos, novo_id, data_comp, categoria_sel, descricao)
+                            # Payload para a tabela nova de regras recorrentes
+                            payload_regra = {
+                                "descricao": descricao,
+                                "tipo": tipo_lanc,
+                                "valor": float(valor),
+                                "dia_vencimento_fixo": int(dia_vencimento),
+                                "frequencia_meses": int(freq_meses),
+                                "categoria_id": opcoes_cats[categoria_sel],
+                                "conta_bancaria_id": contas_opcoes.get(conta_sel),
+                                "centro_custo": None if tag == "Nenhum" else tag,
+                                "data_competencia": str(data_inicio_rec),
+                                "data_fim_recorrencia": str(data_fim_rec)
+                            }
                             
-                            st.cache_data.clear()
-                            # UX: Adicionado o st.toast junto com o st.success para melhor feedback visual
-                            st.toast("Lançamento salvo com sucesso!", icon="✅")
-                            st.success("✅ Lançamento e anexos registrados com sucesso!")
-                            time.sleep(1)
-                            st.rerun()
+                            res_regra = sb_request("regras_recorrentes", "POST", [payload_regra])
+                            if res_regra:
+                                st.cache_data.clear()
+                                st.session_state["motor_recorrencia_rodou"] = False # Força o robô a rodar
+                                st.toast("Regra recorrente cadastrada com sucesso!", icon="🔁")
+                                st.success("✅ Regra matriz cadastrada com sucesso! O robô gerará as parcelas mensais.")
+                                time.sleep(1)
+                                st.rerun()
+                        else:
+                            # Payload para a tabela normal de lançamentos únicos
+                            payload_lanc = {
+                                "descricao": descricao,
+                                "tipo": tipo_lanc,
+                                "valor": float(valor),
+                                "data_competencia": str(data_comp),
+                                "data_vencimento": str(data_venc),
+                                "status": status_lanc,
+                                "categoria_id": opcoes_cats[categoria_sel],
+                                "conta_bancaria_id": contas_opcoes.get(conta_sel),
+                                "centro_custo": None if tag == "Nenhum" else tag,
+                                "recorrente": False
+                            }
+                            
+                            if status_lanc == "Concluído":
+                                payload_lanc["data_pagamento"] = str(data_venc)
+
+                            res_lanc = sb_request("lancamentos", "POST", [payload_lanc])
+                            
+                            if res_lanc and len(res_lanc) > 0:
+                                novo_id = res_lanc[0]['id']
+                                if arquivos:
+                                    processar_e_salvar_anexos(arquivos, novo_id, data_comp, categoria_sel, descricao)
+                                
+                                st.cache_data.clear()
+                                st.toast("Lançamento salvo com sucesso!", icon="✅")
+                                st.success("✅ Lançamento e anexos registrados com sucesso!")
+                                time.sleep(1)
+                                st.rerun()
     with tab2:
         df = carregar_lancamentos_df()
         pend = df[(df['status'] == 'Pendente') & (df['recorrente'] != True)].copy() if not df.empty else pd.DataFrame()
