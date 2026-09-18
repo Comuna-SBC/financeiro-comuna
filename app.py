@@ -94,15 +94,20 @@ st.markdown("""
 
 
 def verificar_e_gerar_recorrencias(df_all):
-    # Garante que essa verificação pesada rode apenas UMA vez quando o usuário logar
     if st.session_state.get("motor_recorrencia_rodou") or df_all.empty:
         return
 
-    hoje = hoje_sp()
+    from datetime import datetime, date
+    from zoneinfo import ZoneInfo
+    import pandas as pd
+    import calendar
+
+    # Fuso horário garantido dentro do robô
+    hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
     mes_atual = hoje.month
     ano_atual = hoje.year
 
-    # 1. Filtra apenas as "Regras Mães" (recorrente = True)
+    # 1. Isola apenas as Regras Mães (Contratos)
     regras_ativas = df_all[df_all['recorrente'] == True]
     
     if regras_ativas.empty:
@@ -112,14 +117,30 @@ def verificar_e_gerar_recorrencias(df_all):
     novos_lancamentos = []
     
     for _, regra in regras_ativas.iterrows():
-        # Verifica se a regra já passou da data de validade (data_fim_recorrencia)
+        if pd.isna(regra.get('data_competencia')):
+            continue
+            
+        dt_inicio = pd.to_datetime(regra['data_competencia']).date()
+        
+        # Ignora se a regra for programada para o futuro
+        if hoje < dt_inicio:
+            continue 
+
+        # Ignora se a regra já passou da data de validade
         if pd.notna(regra.get('data_fim_recorrencia')):
             fim_regra = pd.to_datetime(regra['data_fim_recorrencia']).date()
             if hoje > fim_regra:
-                continue # Pula se a regra já venceu
+                continue 
 
-        # 2. Verifica se JÁ EXISTE um lançamento gerado para ESTE MÊS e ESTA REGRA
-        # Usamos a descrição e o mês/ano para evitar duplicidade
+        # 2. Matemática de Frequência (Pula os meses corretos se não for mensal)
+        freq = int(regra.get('frequencia_meses') or 1)
+        meses_passados = (ano_atual - dt_inicio.year) * 12 + (mes_atual - dt_inicio.month)
+        
+        # Se a diferença de meses não for o ciclo exato da frequência, pula este mês
+        if meses_passados % freq != 0:
+            continue
+
+        # 3. Verifica se JÁ EXISTE a cobrança gerada para ESTE MÊS (Mãe ou Filho)
         ja_lancado_este_mes = df_all[
             (df_all['descricao'] == regra['descricao']) &
             (pd.to_datetime(df_all['data_competencia']).dt.month == mes_atual) &
@@ -127,38 +148,37 @@ def verificar_e_gerar_recorrencias(df_all):
         ]
 
         if ja_lancado_este_mes.empty:
-            # 3. Se não existe, monta o lançamento "Filho" para o mês atual
+            # Não tem cobrança neste mês! O Robô gera o Filho.
             dia_venc = int(regra.get('dia_vencimento_fixo') or 10)
             
-            # Tratativa para meses que terminam dia 28/30
-            import calendar
+            # Tratativa anti-bug para meses que terminam dia 28/30
             ultimo_dia_mes = calendar.monthrange(ano_atual, mes_atual)[1]
             dia_seguro = min(dia_venc, ultimo_dia_mes)
             
-            dt_competencia = date(ano_atual, mes_atual, dia_seguro)
+            dt_nova_comp = date(ano_atual, mes_atual, dia_seguro)
 
             novo_filho = {
                 "descricao": regra['descricao'],
                 "tipo": regra['tipo'],
                 "valor": float(regra['valor']),
-                "data_competencia": str(dt_competencia),
-                "data_vencimento": str(dt_competencia),
-                "status": "Pendente", # Sempre nasce pendente para o tesoureiro pagar/receber
+                "data_competencia": str(dt_nova_comp),
+                "data_vencimento": str(dt_nova_comp),
+                "status": "Pendente",
                 "categoria_id": regra.get('categoria_id'),
                 "conta_bancaria_id": regra.get('conta_bancaria_id'),
                 "centro_custo": regra.get('centro_custo'),
-                "recorrente": False # IMPORTANTE: O filho é False para não poluir sua Tab 4 de regras
+                "recorrente": False # IMPORTANTE: O filho NUNCA é uma regra!
             }
             novos_lancamentos.append(novo_filho)
 
-    # 4. Envia tudo para o banco de uma vez só
+    # 4. Dispara todos os filhos gerados para o banco de uma vez só
     if novos_lancamentos:
         res = sb_request("lancamentos", "POST", novos_lancamentos)
         if res:
             st.cache_data.clear()
-            st.toast(f"🤖 Sistema gerou {len(novos_lancamentos)} contas recorrentes para este mês!", icon="🚀")
+            st.toast(f"🤖 Robô gerou {len(novos_lancamentos)} lançamentos recorrentes para este mês!", icon="🚀")
 
-    # Marca que já rodou para não repetir
+    # Marca para não ficar processando isso a cada clique no sistema
     st.session_state["motor_recorrencia_rodou"] = True
 
 # ==========================================
