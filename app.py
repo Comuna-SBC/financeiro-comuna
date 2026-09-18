@@ -1165,7 +1165,7 @@ elif page == "Visão Consolidada":
             df_detalhe['ordem_tipo'] = df_detalhe['tipo'].map({'Saída': 0, 'Entrada': 1})
             df_detalhe = df_detalhe.sort_values(by=['ordem_tipo', 'data_competencia'], ascending=[True, False])
             
-            header_cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2])
+            header_cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2, 1.1])
             header_cols[0].markdown("**Tipo**")
             header_cols[1].markdown("**Data**")
             header_cols[2].markdown("**Descrição**")
@@ -1173,11 +1173,12 @@ elif page == "Visão Consolidada":
             header_cols[4].markdown("**Valor**")
             header_cols[5].markdown("**Conta**")
             header_cols[6].markdown("**Documento**")
+            header_cols[7].markdown("**Situação**")
             st.markdown("<hr style='margin:4px 0;border-color:#CBD5E1;'>", unsafe_allow_html=True)
 
             for _, row in df_detalhe.iterrows():
                 row_id = str(row['id'])
-                cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2])
+                cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2, 1.1])
                 
                 cols[0].markdown(f"<div class='drill-row'>{row['tipo']}</div>", unsafe_allow_html=True)
                 cols[1].markdown(f"<div class='drill-row'>{row['data_competencia'].strftime('%d/%m/%Y')}</div>", unsafe_allow_html=True)
@@ -1203,6 +1204,13 @@ elif page == "Visão Consolidada":
                         cols[6].markdown('<span class="badge-falta-anexo">🔴 Falta anexo</span>', unsafe_allow_html=True)
                     else:
                         cols[6].markdown("<div class='drill-row' style='color: #64748B;'>—</div>", unsafe_allow_html=True)
+
+                # Coluna Situação (Status) logo após Documento
+                status_val = row.get('status', 'Concluído')
+                if status_val == 'Concluído':
+                    cols[7].markdown(f"<div class='drill-row' style='color: #059669; font-weight: 600;'>Concluído</div>", unsafe_allow_html=True)
+                else:
+                    cols[7].markdown(f"<div class='drill-row' style='color: #D97706; font-weight: 600;'>{status_val}</div>", unsafe_allow_html=True)
 
                 if st.session_state.get(f"show_vis_anexo_{row_id}", False):
                     with st.container(border=True):
