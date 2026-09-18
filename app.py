@@ -3,13 +3,17 @@ from supabase import create_client
 import pandas as pd
 from PIL import Image
 import io
-from datetime import date
+from datetime import datetime, date
+from zoneinfo import ZoneInfo
 import time
 import plotly.express as px
 import plotly.graph_objects as go
 import requests
 import re
 import zipfile
+
+def hoje_sp():
+    return datetime.now(ZoneInfo("America/Sao_Paulo")).date()
 
 # ==========================================
 # CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM
@@ -94,7 +98,7 @@ def verificar_e_gerar_recorrencias(df_all):
     if st.session_state.get("motor_recorrencia_rodou") or df_all.empty:
         return
 
-    hoje = date.today()
+    hoje = hoje_sp()
     mes_atual = hoje.month
     ano_atual = hoje.year
 
@@ -801,14 +805,14 @@ if page == "Resumo do Dia":
     """, unsafe_allow_html=True)
 
     st.title("Resumo do Dia")
-    st.markdown(f"Hoje é {date.today().strftime('%d/%m/%Y')}. Aqui está o que precisa da sua atenção.")
+    st.markdown(f"Hoje é {hoje_sp().strftime('%d/%m/%Y')}. Aqui está o que precisa da sua atenção.")
 
     df = carregar_lancamentos_df()
     inscricoes_resumo = carregar("inscricoes")
     pagamentos_resumo = carregar("inscricao_pagamentos")
     eventos_resumo = carregar("eventos")
 
-    hoje = pd.Timestamp(date.today())
+    hoje = pd.Timestamp(hoje_sp())
     
     saldos_por_conta = []
     saldo_consolidado = 0.0
@@ -966,7 +970,7 @@ elif page == "Visão Consolidada":
     st.markdown("Acompanhe o balanço mensal de Entradas e Saídas consolidado por categoria.")
 
     df = carregar_lancamentos_df()
-    ano_atual = date.today().year
+    ano_atual = hoje_sp().year
     
     anos_disp = sorted(df['data_competencia'].dt.year.dropna().unique().astype(int), reverse=True) if not df.empty else [ano_atual]
     if ano_atual not in anos_disp:
@@ -1245,8 +1249,8 @@ elif page == "Tesouraria":
                 
                 # UX: Adicionado Data de Início
                 col_r_new1, col_r_new2 = st.columns(2)
-                data_inicio_rec = col_r_new1.date_input("Data de Início", date.today(), format="DD.MM.YYYY", key="rec_ini")
-                data_fim_rec = col_r_new2.date_input("Data Final da Recorrência", date.today() + pd.DateOffset(months=12), format="DD.MM.YYYY", key="rec_fim")
+                data_inicio_rec = col_r_new1.date_input("Data de Início", hoje_sp(), format="DD.MM.YYYY", key="rec_ini")
+                data_fim_rec = col_r_new2.date_input("Data Final da Recorrência", hoje_sp() + pd.DateOffset(months=12), format="DD.MM.YYYY", key="rec_fim")
                 
                 cats_filtradas = [c for c in categorias_db if c.get("tipo") == tipo_lanc]
                 opcoes_cats = {c["nome"]: c["id"] for c in cats_filtradas}
@@ -1272,8 +1276,8 @@ elif page == "Tesouraria":
                     st.caption("📅 Mês de Competência Contábil (Referência MM.YYYY)")
                     cc_m, cc_a = col2.columns(2)
                     # UX: Textos ajustados
-                    mes_comp_sel = cc_m.selectbox("Mês-Competência", MESES_PT, index=date.today().month-1, key="unico_mes_comp")
-                    ano_comp_sel = cc_a.number_input("Ano-Competência", min_value=2020, max_value=2100, value=date.today().year, step=1, key="unico_ano_comp")
+                    mes_comp_sel = cc_m.selectbox("Mês-Competência", MESES_PT, index=hoje_sp().month-1, key="unico_mes_comp")
+                    ano_comp_sel = cc_a.number_input("Ano-Competência", min_value=2020, max_value=2100, value=hoje_sp().year, step=1, key="unico_ano_comp")
                     
                     idx_mes = MESES_PT.index(mes_comp_sel) + 1
                     data_comp = date(int(ano_comp_sel), idx_mes, 1)
@@ -1281,9 +1285,9 @@ elif page == "Tesouraria":
                     # UX: "Pendente" colocado primeiro para ser o padrão selecionado
                     status_lanc = col3.selectbox("Situação", ["Pendente", "Concluído"], key="unico_status")
                     label_data = "Data de Pagamento" if status_lanc == "Concluído" else "Data de Vencimento"
-                    data_venc = st.date_input(label_data, date.today(), format="DD.MM.YYYY", key="unico_venc")
+                    data_venc = st.date_input(label_data, hoje_sp(), format="DD.MM.YYYY", key="unico_venc")
                 else:
-                    data_comp = col2.date_input("Data de Recebimento", date.today(), format="DD.MM.YYYY", key="unico_data_ent")
+                    data_comp = col2.date_input("Data de Recebimento", hoje_sp(), format="DD.MM.YYYY", key="unico_data_ent")
                     # UX: "Pendente" colocado primeiro
                     status_lanc = col3.selectbox("Situação", ["Pendente", "Concluído"], key="unico_status_ent")
                     data_venc = data_comp
@@ -1356,7 +1360,7 @@ elif page == "Tesouraria":
         if pend.empty:
             st.info("Nenhuma conta pendente no momento. 🎉")
         else:
-            hoje = pd.Timestamp(date.today())
+            hoje = pd.Timestamp(hoje_sp())
             
             pend_pagar = pend[pend['tipo'] == 'Saída'].sort_values('data_vencimento') if 'tipo' in pend.columns else pd.DataFrame()
             pend_receber = pend[pend['tipo'] == 'Entrada'].sort_values('data_vencimento') if 'tipo' in pend.columns else pd.DataFrame()
@@ -1406,7 +1410,7 @@ elif page == "Tesouraria":
                                     with st.spinner("Enviando anexos e registrando pagamento..."):
                                         res = sb_request("lancamentos", "PATCH", {
                                             "status": "Concluído", 
-                                            "data_pagamento": str(date.today())
+                                            "data_pagamento": str(hoje_sp())
                                         }, filtros={"id": f"eq.{row_id}"})
                                         
                                         if res is not None:
@@ -1465,7 +1469,7 @@ elif page == "Tesouraria":
                                 with st.spinner("Registrando recebimento..."):
                                     res = sb_request("lancamentos", "PATCH", {
                                         "status": "Concluído", 
-                                        "data_pagamento": str(date.today())
+                                        "data_pagamento": str(hoje_sp())
                                     }, filtros={"id": f"eq.{row_id}"})
                                     
                                     if res is not None:
@@ -1498,7 +1502,7 @@ elif page == "Tesouraria":
                     mapa_anexos[l_id].append(anexo)
 
             col_f1, col_f2, col_f3, col_f4, col_f5, col_f6 = st.columns(6)
-            start_date = date.today().replace(day=1)
+            start_date = hoje_sp().replace(day=1)
             end_date = (pd.Timestamp.today() + pd.offsets.MonthEnd(1)).date()
             
             data_inicio = col_f1.date_input("De", start_date, format="DD.MM.YYYY", key="hist_dt_ini")
@@ -1649,9 +1653,9 @@ elif page == "Tesouraria":
                                 with col_e2:
                                     raw_data = lanc_raw.get('data_competencia')
                                     try:
-                                        default_date = pd.to_datetime(raw_data).date() if raw_data else date.today()
+                                        default_date = pd.to_datetime(raw_data).date() if raw_data else hoje_sp()
                                     except:
-                                        default_date = date.today()
+                                        default_date = hoje_sp()
                                     n_data = st.date_input("Data", value=default_date, format="DD/MM/YYYY", key=f"ed_data_{row_id}")
                                     
                                     status_opts = ["Concluído", "Pendente"]
@@ -1827,8 +1831,8 @@ elif page == "Tesouraria":
                             e_tag = col_ct2.selectbox("Projeto / Evento", opcoes_tags, index=idx_tag, key=f"ed_rec_tag_{rec_id}")
 
                             col_d1, col_d2 = st.columns(2)
-                            e_dt_ini = col_d1.date_input("Data Inicial (De)", pd.to_datetime(rec_row['data_competencia']).date() if pd.notna(rec_row.get('data_competencia')) else date.today(), format="DD.MM.YYYY", key=f"ed_rec_de_{rec_id}")
-                            e_dt_fim = col_d2.date_input("Data Final (Até)", pd.to_datetime(rec_row['data_fim_recorrencia']).date() if pd.notna(rec_row.get('data_fim_recorrencia')) else date.today() + pd.DateOffset(months=12), format="DD.MM.YYYY", key=f"ed_rec_ate_{rec_id}")
+                            e_dt_ini = col_d1.date_input("Data Inicial (De)", pd.to_datetime(rec_row['data_competencia']).date() if pd.notna(rec_row.get('data_competencia')) else hoje_sp(), format="DD.MM.YYYY", key=f"ed_rec_de_{rec_id}")
+                            e_dt_fim = col_d2.date_input("Data Final (Até)", pd.to_datetime(rec_row['data_fim_recorrencia']).date() if pd.notna(rec_row.get('data_fim_recorrencia')) else hoje_sp() + pd.DateOffset(months=12), format="DD.MM.YYYY", key=f"ed_rec_ate_{rec_id}")
                             
                             col_s1, col_s2 = st.columns(2)
                             if col_s1.form_submit_button("💾 Salvar Alterações", use_container_width=True, type="primary"):
@@ -2228,7 +2232,7 @@ elif page == "Painel de Eventos":
                 codigo_centavos = c_lead2.text_input("Código de Centavos (Ex: 07)", max_chars=2, help="Usado para identificar pagamentos via PIX automaticamente no extrato.")
 
                 codigo_rec_ev = st.text_input("Código Contábil de Receita (Ex: 4.1.10.100.007)")
-                data_ev = st.date_input("Data do Evento (ou fim da campanha)", date.today())
+                data_ev = st.date_input("Data do Evento (ou fim da campanha)", hoje_sp())
                 valor_ev = st.number_input("Valor da Inscrição / Alvo (R$)", min_value=0.0, format="%.2f")
                 vagas_ev = st.number_input("Total de Vagas (0 para ilimitado)", min_value=0, step=1)
                 chave_pix_ev = st.text_input("Chave Pix")
@@ -2271,12 +2275,12 @@ elif page == "Painel de Eventos":
                     
                     raw_data_ev = ev_data.get('data_evento')
                     if pd.isna(raw_data_ev) or not raw_data_ev:
-                        default_date = date.today()
+                        default_date = hoje_sp()
                     else:
                         try:
                             default_date = pd.to_datetime(raw_data_ev).date()
                         except Exception:
-                            default_date = date.today()
+                            default_date = hoje_sp()
 
                     n_data_ev = st.date_input("Data", default_date)
                     n_valor_ev = st.number_input("Valor (R$)", value=float(ev_data.get('valor_inscricao') or 0), format="%.2f")
@@ -2662,7 +2666,7 @@ elif page == "Inscrições e Comprovantes":
                                 else:
                                     conta_id = next(c["id"] for c in contas_db if c["nome"] == conta_selecionada)
                                     cat_evento_id = next((c['id'] for c in categorias_db if c.get('nome', '').strip().lower() == 'inscrições de eventos'), None)
-                                    data_pg_aprovada = p.get('data_pagamento') or str(date.today())
+                                    data_pg_aprovada = p.get('data_pagamento') or str(hoje_sp())
                                     
                                     novo_lanc = sb_request("lancamentos", "POST", [{
                                         "descricao": f"Inscrição ({insc.get('nome_participante')} - parcela {p.get('numero_parcela',1)}) - {ev_obj.get('nome')}",
@@ -2774,8 +2778,8 @@ elif page == "Metas e Orçamentos":
         with col_f1:
             with st.form("form_meta", clear_on_submit=True):
                 c1, c2, c3, c4 = st.columns(4)
-                ano_meta = c1.number_input("Ano", min_value=2020, max_value=2100, value=date.today().year)
-                mes_meta = c2.selectbox("Mês", list(range(1, 13)), format_func=lambda m: MESES_PT[m-1], index=date.today().month-1)
+                ano_meta = c1.number_input("Ano", min_value=2020, max_value=2100, value=hoje_sp().year)
+                mes_meta = c2.selectbox("Mês", list(range(1, 13)), format_func=lambda m: MESES_PT[m-1], index=hoje_sp().month-1)
                 meta_entradas = c3.number_input("Meta Entradas (R$)", min_value=0.0, format="%.2f")
                 meta_saidas = c4.number_input("Teto Saídas (R$)", min_value=0.0, format="%.2f")
                 if st.form_submit_button("Salvar Meta", use_container_width=True):
@@ -2807,7 +2811,7 @@ elif page == "Metas e Orçamentos":
         with col_o1:
             with st.form("form_orcamento", clear_on_submit=True):
                 c1, c2, c3 = st.columns(3)
-                ano_orc = c1.number_input("Ano", min_value=2020, max_value=2100, value=date.today().year, key="ano_orc")
+                ano_orc = c1.number_input("Ano", min_value=2020, max_value=2100, value=hoje_sp().year, key="ano_orc")
                 cat_orc = c2.selectbox("Categoria", [c['nome'] for c in cats_saida])
                 valor_orc = c3.number_input("Valor Orçado (R$)", min_value=0.0, format="%.2f")
                 if st.form_submit_button("Salvar Orçamento", use_container_width=True):
@@ -3014,7 +3018,7 @@ elif page == "Analytics Financeiro":
 
         with col_g2:
             st.subheader("Orçado vs Realizado (Ano)")
-            ano_atual = date.today().year
+            ano_atual = hoje_sp().year
             orcamentos_ano = [o for o in carregar("orcamentos_categoria") if int(o['ano']) == ano_atual]
             if orcamentos_ano:
                 map_cat_nome = {str(c['id']): c['nome'] for c in categorias_db}
