@@ -1574,7 +1574,7 @@ elif page == "Tesouraria":
                 
                 st.markdown("#### Lista de Lançamentos e Comprovantes")
 
-                header_cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2, 0.8])
+                header_cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2, 1.1, 0.8])
                 header_cols[0].markdown("**Tipo**")
                 header_cols[1].markdown("**Data**")
                 header_cols[2].markdown("**Descrição**")
@@ -1582,12 +1582,13 @@ elif page == "Tesouraria":
                 header_cols[4].markdown("**Valor**")
                 header_cols[5].markdown("**Conta**")
                 header_cols[6].markdown("**Documento**")
-                header_cols[7].markdown("**Editar**")
+                header_cols[7].markdown("**Situação**")
+                header_cols[8].markdown("**Editar**")
                 st.markdown("<hr style='margin:4px 0;border-color:#CBD5E1;'>", unsafe_allow_html=True)
 
                 for _, row in dff.iterrows():
                     row_id = str(row['id'])
-                    cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2, 0.8])
+                    cols = st.columns([1, 1.2, 2.5, 2, 1.3, 1.2, 1.2, 1.1, 0.8])
                     
                     cols[0].markdown(f"<div class='drill-row'>{row['tipo']}</div>", unsafe_allow_html=True)
                     cols[1].markdown(f"<div class='drill-row'>{row['data_competencia'].strftime('%d/%m/%Y')}</div>", unsafe_allow_html=True)
@@ -1614,7 +1615,14 @@ elif page == "Tesouraria":
                         else:
                             cols[6].markdown("<div class='drill-row' style='color: #64748B;'>—</div>", unsafe_allow_html=True)
 
-                    if cols[7].button("✏️", key=f"btn_edit_lapis_{row_id}", help="Editar Lançamento"):
+                    # Coluna Situação (Status) logo após Documento
+                    status_val = row.get('status', 'Concluído')
+                    if status_val == 'Concluído':
+                        cols[7].markdown(f"<div class='drill-row' style='color: #059669; font-weight: 600;'>Concluído</div>", unsafe_allow_html=True)
+                    else:
+                        cols[7].markdown(f"<div class='drill-row' style='color: #D97706; font-weight: 600;'>{status_val}</div>", unsafe_allow_html=True)
+
+                    if cols[8].button("✏️", key=f"btn_edit_lapis_{row_id}", help="Editar Lançamento"):
                         st.session_state[f"edit_lanc_ativo"] = row_id
                         st.rerun()
 
@@ -1651,7 +1659,7 @@ elif page == "Tesouraria":
                                             st.rerun()
                                         except Exception as e:
                                             st.error(f"Erro: {e}")
-                                            
+                                        
                             if st.button("Fechar Gerenciador", key=f"close_hist_{row_id}"):
                                 st.session_state[f"show_hist_anexo_{row_id}"] = False
                                 st.rerun()
@@ -1718,7 +1726,6 @@ elif page == "Tesouraria":
                                         "categoria_id": n_cat_id,
                                         "conta_bancaria_id": n_conta_id
                                     }
-                                    # Os campos visuais "categoria_nome" e "conta_nome" foram removidos do payload para evitar o Erro 400
                                     
                                     sb_request("lancamentos", "PATCH", payload, filtros={"id": f"eq.{row_id}"})
                                     if novos_arq_edicao:
