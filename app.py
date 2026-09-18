@@ -1758,8 +1758,10 @@ elif page == "Tesouraria":
 
     with tab4:
         st.markdown("### Gerenciamento de Regras Recorrentes (Despesas/Receitas Fixas)")
-        df_all = carregar_lancamentos_df()
-        recorrencias_ativas = df_all[df_all['recorrente'] == True].copy() if not df_all.empty else pd.DataFrame()
+        
+        # Leitura direcionada exclusivamente para a nova tabela de matrizes de recorrência
+        dados_regras = sb_request("regras_recorrentes", "GET")
+        recorrencias_ativas = pd.DataFrame(dados_regras) if dados_regras else pd.DataFrame()
         
         if recorrencias_ativas.empty:
             st.info("Nenhuma regra recorrente cadastrada.")
@@ -1804,7 +1806,8 @@ elif page == "Tesouraria":
                     st.rerun()
                     
                 if b_del.button("🗑️", key=f"btn_del_rec_{rec_id}", help="Excluir Regra"):
-                    sb_request("lancamentos", "DELETE", filtros={"id": f"eq.{rec_id}"})
+                    # Exclusão correta na tabela de regras recorrentes
+                    sb_request("regras_recorrentes", "DELETE", filtros={"id": f"eq.{rec_id}"})
                     if f"editing_rec_{rec_id}" in st.session_state:
                         del st.session_state[f"editing_rec_{rec_id}"]
                     st.cache_data.clear()
@@ -1820,7 +1823,6 @@ elif page == "Tesouraria":
                             e_tipo = st.selectbox("Tipo", ["Entrada", "Saída"], index=0 if rec_row['tipo'] == "Entrada" else 1, key=f"ed_rec_tipo_{rec_id}")
                             e_desc = st.text_input("Descrição", value=rec_row['descricao'], key=f"ed_rec_desc_{rec_id}")
                             
-                            # Adicionado campo de Frequência
                             c_val_dia = st.columns(3)
                             e_valor = c_val_dia[0].number_input("Valor Base (R$)", value=float(rec_row['valor'] or 0), format="%.2f", key=f"ed_rec_val_{rec_id}")
                             e_dia = c_val_dia[1].number_input("Dia Fixo de Vencimento", min_value=1, max_value=31, value=int(rec_row.get('dia_vencimento_fixo') or 10), step=1, key=f"ed_rec_dia_{rec_id}")
@@ -1828,12 +1830,13 @@ elif page == "Tesouraria":
                             
                             cats_r_edit = [c for c in categorias_db if c.get("tipo") == e_tipo]
                             opcoes_cats_r = {c["nome"]: c["id"] for c in cats_r_edit}
-                            atual_cat_nome = rec_row.get('categoria_nome')
+                            
+                            atual_cat_id = rec_row.get('categoria_id')
+                            atual_cat_nome = map_cat.get(str(atual_cat_id), "") if atual_cat_id else ""
                             idx_c = list(opcoes_cats_r.keys()).index(atual_cat_nome) if atual_cat_nome in opcoes_cats_r else 0
                             
                             e_cat = st.selectbox("Categoria", list(opcoes_cats_r.keys()) if opcoes_cats_r else ["-"], index=idx_c, key=f"ed_rec_cat_{rec_id}")
                             
-                            # Adicionado Conta e Projeto/Evento
                             contas_opcoes = {"Nenhuma": None} | {c["nome"]: c["id"] for c in contas_bancarias_db}
                             atual_conta_id = rec_row.get('conta_bancaria_id')
                             nome_conta_atual = next((nome for nome, idx in contas_opcoes.items() if idx == atual_conta_id), "Nenhuma")
@@ -1863,22 +1866,21 @@ elif page == "Tesouraria":
                                     "conta_bancaria_id": contas_opcoes[e_conta],
                                     "centro_custo": None if e_tag == "Nenhum" else e_tag,
                                     "data_competencia": str(e_dt_ini),
-                                    "data_vencimento": str(e_dt_ini),
                                     "data_fim_recorrencia": str(e_dt_fim)
                                 }
-                                res = sb_request("lancamentos", "PATCH", carga_rec, filtros={"id": f"eq.{rec_id}"})
+                                # PATCH direcionado à tabela de regras recorrentes
+                                res = sb_request("regras_recorrentes", "PATCH", carga_rec, filtros={"id": f"eq.{rec_id}"})
                                 if res is not None:
                                     st.session_state[f"editing_rec_{rec_id}"] = False
                                     st.cache_data.clear()
                                     st.success("Regra atualizada com sucesso!")
                                     time.sleep(1)
                                     st.rerun()
-                            
+                                
                             if col_s2.form_submit_button("❌ Cancelar", use_container_width=True):
                                 st.session_state[f"editing_rec_{rec_id}"] = False
                                 st.rerun()
             st.markdown("<hr style='margin:6px 0;border:none;border-top:1px solid #E2E8F0;'>", unsafe_allow_html=True)
-            
 # ==========================================
 # CONCILIAÇÃO BANCÁRIA
 # ==========================================
