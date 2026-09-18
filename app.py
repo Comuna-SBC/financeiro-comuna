@@ -88,6 +88,75 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+
+def verificar_e_gerar_recorrencias(df_all):
+    # Garante que essa verificação pesada rode apenas UMA vez quando o usuário logar
+    if st.session_state.get("motor_recorrencia_rodou") or df_all.empty:
+        return
+
+    hoje = date.today()
+    mes_atual = hoje.month
+    ano_atual = hoje.year
+
+    # 1. Filtra apenas as "Regras Mães" (recorrente = True)
+    regras_ativas = df_all[df_all['recorrente'] == True]
+    
+    if regras_ativas.empty:
+        st.session_state["motor_recorrencia_rodou"] = True
+        return
+
+    novos_lancamentos = []
+    
+    for _, regra in regras_ativas.iterrows():
+        # Verifica se a regra já passou da data de validade (data_fim_recorrencia)
+        if pd.notna(regra.get('data_fim_recorrencia')):
+            fim_regra = pd.to_datetime(regra['data_fim_recorrencia']).date()
+            if hoje > fim_regra:
+                continue # Pula se a regra já venceu
+
+        # 2. Verifica se JÁ EXISTE um lançamento gerado para ESTE MÊS e ESTA REGRA
+        # Usamos a descrição e o mês/ano para evitar duplicidade
+        ja_lancado_este_mes = df_all[
+            (df_all['descricao'] == regra['descricao']) &
+            (pd.to_datetime(df_all['data_competencia']).dt.month == mes_atual) &
+            (pd.to_datetime(df_all['data_competencia']).dt.year == ano_atual)
+        ]
+
+        if ja_lancado_este_mes.empty:
+            # 3. Se não existe, monta o lançamento "Filho" para o mês atual
+            dia_venc = int(regra.get('dia_vencimento_fixo') or 10)
+            
+            # Tratativa para meses que terminam dia 28/30
+            import calendar
+            ultimo_dia_mes = calendar.monthrange(ano_atual, mes_atual)[1]
+            dia_seguro = min(dia_venc, ultimo_dia_mes)
+            
+            dt_competencia = date(ano_atual, mes_atual, dia_seguro)
+
+            novo_filho = {
+                "descricao": regra['descricao'],
+                "tipo": regra['tipo'],
+                "valor": float(regra['valor']),
+                "data_competencia": str(dt_competencia),
+                "data_vencimento": str(dt_competencia),
+                "status": "Pendente", # Sempre nasce pendente para o tesoureiro pagar/receber
+                "categoria_id": regra.get('categoria_id'),
+                "conta_bancaria_id": regra.get('conta_bancaria_id'),
+                "centro_custo": regra.get('centro_custo'),
+                "recorrente": False # IMPORTANTE: O filho é False para não poluir sua Tab 4 de regras
+            }
+            novos_lancamentos.append(novo_filho)
+
+    # 4. Envia tudo para o banco de uma vez só
+    if novos_lancamentos:
+        res = sb_request("lancamentos", "POST", novos_lancamentos)
+        if res:
+            st.cache_data.clear()
+            st.toast(f"🤖 Sistema gerou {len(novos_lancamentos)} contas recorrentes para este mês!", icon="🚀")
+
+    # Marca que já rodou para não repetir
+    st.session_state["motor_recorrencia_rodou"] = True
+
 # ==========================================
 # CONEXÃO COM SUPABASE & HELPER DE EXPORTAÇÃO
 # ==========================================
@@ -596,6 +665,10 @@ if not st.session_state["session"]:
                 except Exception as e:
                     st.error("Credenciais inválidas. Verifique seu e-mail e senha.")
     st.stop()
+
+# Carrega os dados uma vez para o motor ler
+df_para_motor = carregar_lancamentos_df() 
+verificar_e_gerar_recorrencias(df_para_motor)
 
 # ==========================================
 # MENU LATERAL INTERNO E CONTROLE DE ACESSO (RBAC)
@@ -1663,31 +1736,7 @@ elif page == "Tesouraria":
                 )
 
     with tab4:
-        st.markdown("### 🔁 Gerenciamento de Regras Recorrentes (Despesas/Receitas Fixas)")
-        
-        # ==========================================
-        # NOVO: Motor de Processamento do Mês
-        # ==========================================
-        st.info("💡 Central de controle. Gere as previsões do mês atual em lote baseadas nas regras ativas abaixo.")
-        col_res1, col_res2 = st.columns(2)
-        mes_atual = date.today().month
-        ano_atual = date.today().year
-        
-        col_res1.metric("Mês Base", f"{MESES_PT[mes_atual-1]} / {ano_atual}")
-        
-        if col_res2.button("▶️ Processar Lançamentos do Mês", type="primary", use_container_width=True):
-            with st.spinner("Verificando contratos e contas fixas ativas..."):
-                # Aqui você pode inserir a lógica para ler 'recorrencias_ativas' e fazer o POST 
-                # dos lançamentos individuais do mês com status "Pendente".
-                st.toast(f"✅ Previsões geradas com sucesso para {MESES_PT[mes_atual-1]}!", icon="✅")
-                time.sleep(1.5)
-                st.rerun()
-
-        st.markdown("---")
-        
-        # ==========================================
-        # MANTIDO: Seu código original de listagem e edição
-        # ==========================================
+        st.markdown("### Gerenciamento de Regras Recorrentes (Despesas/Receitas Fixas)")
         df_all = carregar_lancamentos_df()
         recorrencias_ativas = df_all[df_all['recorrente'] == True].copy() if not df_all.empty else pd.DataFrame()
         
@@ -1702,7 +1751,7 @@ elif page == "Tesouraria":
             recorrencias_ativas['dt_fim_sort'] = pd.to_datetime(recorrencias_ativas['data_fim_recorrencia'], errors='coerce')
             recorrencias_ativas = recorrencias_ativas.sort_values(by=['ordem_tipo', 'dt_fim_sort'], ascending=[True, True])
 
-            st.markdown("#### Contratos e Regras Ativas")
+            st.markdown("---")
             h1, h2, h3, h4, h5, h6, h7 = st.columns([1.2, 2.5, 2, 1.3, 1.3, 1.3, 1.2])
             h1.markdown("**Tipo**")
             h2.markdown("**Descrição**")
