@@ -2057,8 +2057,8 @@ elif page == "Conciliação Bancária":
                                 
                             nomes_eventos = ["Nenhum"] + [e['nome'] for e in eventos_db]
                             map_cat_id = {c['nome']: c['id'] for c in categorias_db}
+                            map_evento_id = {e['nome']: e['id'] for e in eventos_db}
                             
-                            # LOGICA DE AUTO-ATRIBUIÇÃO DE CENTAVOS (EVENTOS)
                             mapa_centavos_evento = {}
                             if eventos_db:
                                 for ev in eventos_db:
@@ -2085,11 +2085,9 @@ elif page == "Conciliação Bancária":
                                 
                                 for _, row in df_entradas.iterrows():
                                     val = float(row['Valor'])
-                                    # Extraindo apenas a casa dos centavos matematicamente
                                     centavos = int(round(val * 100)) % 100
                                     str_cent = f"{centavos:02d}"
                                     
-                                    # Evitar que valores .00 (sem centavos) sejam amarrados a algum evento indevidamente
                                     if str_cent != "00" and str_cent in mapa_centavos_evento:
                                         projetos_list.append(mapa_centavos_evento[str_cent])
                                         categorias_list.append(cat_inscricoes)
@@ -2132,7 +2130,9 @@ elif page == "Conciliação Bancária":
                                     para_salvar_ent = df_entradas_final[df_entradas_final['Cadastrar'] == True]
                                     for _, row in para_salvar_ent.iterrows():
                                         cc = None if row['Projeto'] == "Nenhum" else row['Projeto']
-                                        sb_request("lancamentos", "POST", [{
+                                        
+                                        # 1. Salva no banco de dados principal (Lançamentos da Tesouraria)
+                                        novo_lancamento = sb_request("lancamentos", "POST", [{
                                             "descricao": row['Descrição para Sistema'], "tipo": "Entrada",
                                             "valor": float(row['Valor']), "data_competencia": str(row['Data']),
                                             "status": "Concluído", "data_pagamento": str(row['Data']),
@@ -2140,6 +2140,21 @@ elif page == "Conciliação Bancária":
                                             "conta_bancaria_id": conta_id, "centro_custo": cc, "conciliado": True
                                         }])
                                         total_salvos += 1
+                                        
+                                        # 2. Se for associado a um Projeto/Evento, salva uma cópia no Bolsão de OFX do Evento
+                                        if cc and cc != "Nenhum":
+                                            evento_id = map_evento_id.get(cc)
+                                            lanc_id = novo_lancamento[0]['id'] if (novo_lancamento and isinstance(novo_lancamento, list)) else None
+                                            
+                                            if evento_id and lanc_id:
+                                                sb_request("creditos_ofx", "POST", [{
+                                                    "evento_id": evento_id,
+                                                    "lancamento_id": lanc_id,
+                                                    "data": str(row['Data']),
+                                                    "valor": float(row['Valor']),
+                                                    "descricao_bancaria": str(row['Descrição Bancária']),
+                                                    "status": "Disponível"
+                                                }])
 
                                 if not df_saidas_final.empty:
                                     para_salvar_sai = df_saidas_final[df_saidas_final['Cadastrar'] == True]
@@ -2157,7 +2172,7 @@ elif page == "Conciliação Bancária":
                                 if total_salvos > 0:
                                     st.session_state['ofx_processado'] = None
                                     st.cache_data.clear()
-                                    st.success(f"✅ {total_salvos} transações salvas com sucesso! Vá para 'Conciliação Manual' para anexar os comprovantes pendentes.")
+                                    st.success(f"✅ {total_salvos} transações salvas com sucesso! As entradas de eventos já foram enviadas para o Bolsão.")
                                     time.sleep(2)
                                     st.rerun()
                                 else:
@@ -2289,7 +2304,6 @@ elif page == "Conciliação Bancária":
                                     st.rerun()
 
                         st.markdown("<hr style='margin:2px 0;border-color:#F1F5F9;'>", unsafe_allow_html=True)
-
 # ==========================================
 # ==========================================
 # PAINEL DE EVENTOS
