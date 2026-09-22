@@ -1980,142 +1980,160 @@ elif page == "Conciliação Bancária":
             arquivo_ofx = st.file_uploader("Selecione o arquivo OFX do banco", type=['ofx', 'txt'], key="up_ofx_novo_v5")
 
             if arquivo_ofx:
-                content = arquivo_ofx.read().decode('latin1', errors='ignore')
-                transacoes = []
-                
-                for bloco in re.split(r'<\s*STMTTRN\s*>', content, flags=re.IGNORECASE)[1:]:
-                    dt_match = re.search(r'<DTPOSTED>(\d{8})', bloco)
-                    valor_match = re.search(r'<TRNAMT>([-\d\.]+)', bloco)
-                    memo_match = re.search(r'<MEMO>(.*?)(?:<|$)', bloco)
-                    name_match = re.search(r'<NAME>(.*?)(?:<|$)', bloco)
+                if st.button("▶️ Processar Extrato", type="primary"):
+                    st.session_state['ofx_processado'] = arquivo_ofx.name
+                    
+                if st.session_state.get('ofx_processado') == arquivo_ofx.name:
+                    content = arquivo_ofx.getvalue().decode('latin1', errors='ignore')
+                    transacoes = []
+                    
+                    for bloco in re.split(r'<\s*STMTTRN\s*>', content, flags=re.IGNORECASE)[1:]:
+                        dt_match = re.search(r'<DTPOSTED>(\d{8})', bloco)
+                        valor_match = re.search(r'<TRNAMT>([-\d\.]+)', bloco)
+                        memo_match = re.search(r'<MEMO>(.*?)(?:<|$)', bloco)
+                        name_match = re.search(r'<NAME>(.*?)(?:<|$)', bloco)
 
-                    if dt_match and valor_match:
-                        dt_str = dt_match.group(1)[:8]
-                        try:
-                            dt = pd.to_datetime(dt_str, format='%Y%m%d').date()
-                        except:
-                            continue
-                        
-                        valor = float(valor_match.group(1))
-                        
-                        raw_desc = memo_match.group(1).strip() if memo_match else (name_match.group(1).strip() if name_match else "Extrato Bancário")
-                        raw_desc = re.sub(r'<[^>]+>', '', raw_desc)
-                        
-                        desc_upper = raw_desc.upper()
-                        nome_extraido = raw_desc
-                        
-                        for prefixo in ["PIX - RECEBIMENTO:", "PIX -", "PIX TRANSF", "PIX RECEBIDO", "TED -", "DOC -", "TRANSF. COPIE E COLE", "TRANSFERENCIA"]:
-                            if desc_upper.startswith(prefixo):
-                                nome_extraido = raw_desc[len(prefixo):].strip(" -/")
-                                break
-                        
-                        if not nome_extraido:
+                        if dt_match and valor_match:
+                            dt_str = dt_match.group(1)[:8]
+                            try:
+                                dt = pd.to_datetime(dt_str, format='%Y%m%d').date()
+                            except:
+                                continue
+                            
+                            valor = float(valor_match.group(1))
+                            
+                            raw_desc = memo_match.group(1).strip() if memo_match else (name_match.group(1).strip() if name_match else "Extrato Bancário")
+                            raw_desc = re.sub(r'<[^>]+>', '', raw_desc)
+                            
+                            desc_upper = raw_desc.upper()
                             nome_extraido = raw_desc
-
-                        transacoes.append({
-                            "Data": dt,
-                            "Valor": abs(valor),
-                            "Descrição Bancária": raw_desc[:80],
-                            "Nome Identificado": nome_extraido.title() if len(nome_extraido) > 2 else raw_desc,
-                            "Tipo": "Entrada" if valor >= 0 else "Saída",
-                            "Status": "Não registrado"
-                        })
-
-                df_ofx = pd.DataFrame(transacoes)
-
-                if not df_ofx.empty:
-                    used_ids = set()
-                    for idx, row in df_ofx.iterrows():
-                        if not df_conta.empty:
-                            mask_tipo = df_conta['tipo'] == row['Tipo']
-                            mask_valor = df_conta['valor'] == row['Valor']
-                            mask_data = (pd.to_datetime(df_conta['data_competencia']).dt.date - row['Data']).apply(lambda x: abs(x.days)) <= 3
-                            mask_used = ~df_conta['id'].isin(used_ids)
-
-                            match = df_conta[mask_tipo & mask_valor & mask_data & mask_used]
-                            if not match.empty:
-                                match_id = match.iloc[0]['id']
-                                df_ofx.at[idx, 'Status'] = 'Já no sistema'
-                                used_ids.add(match_id)
-
-                    df_novos = df_ofx[df_ofx['Status'] == 'Não registrado'].copy()
-
-                    if df_novos.empty:
-                        st.success("🎉 Todas as transações deste extrato já constam e batem com o sistema!")
-                    else:
-                        st.info(f"Encontramos **{len(df_novos)} transações** novas no extrato.")
-                        
-                        cats_entrada = [c['nome'] for c in categorias_db if c['tipo'] == 'Entrada']
-                        cats_saida = [c['nome'] for c in categorias_db if c['tipo'] == 'Saída']
-                        nomes_eventos = ["Nenhum"] + [e['nome'] for e in eventos_db]
-                        map_cat_id = {c['nome']: c['id'] for c in categorias_db}
-                        
-                        df_entradas = df_novos[df_novos['Tipo'] == 'Entrada'].copy()
-                        df_saidas = df_novos[df_novos['Tipo'] == 'Saída'].copy()
-                        
-                        df_entradas_final = pd.DataFrame()
-                        df_saidas_final = pd.DataFrame()
-
-                        if not df_entradas.empty:
-                            st.markdown("#### 🟢 Novas Entradas (Recebimentos)")
-                            df_entradas.insert(0, 'Cadastrar', True)
-                            df_entradas['Descrição para Sistema'] = "Extrato: " + df_entradas['Nome Identificado']
-                            df_entradas['Projeto'] = "Nenhum"
-                            df_entradas['Categoria'] = cats_entrada[0] if cats_entrada else ""
                             
-                            df_entradas_final = st.data_editor(
-                                df_entradas[['Cadastrar', 'Data', 'Descrição Bancária', 'Descrição para Sistema', 'Valor', 'Categoria', 'Projeto']],
-                                hide_index=True, use_container_width=True, key="ed_entradas_ofx"
-                            )
-
-                        if not df_saidas.empty:
-                            st.markdown("#### 🔴 Novas Saídas (Pagamentos) - Serão marcadas como 'Falta Anexo' automaticamente")
-                            df_saidas.insert(0, 'Cadastrar', True)
-                            df_saidas['Descrição para Sistema'] = "Extrato: " + df_saidas['Nome Identificado']
-                            df_saidas['Categoria'] = cats_saida[0] if cats_saida else ""
-                            df_saidas['Projeto'] = "Nenhum"
+                            for prefixo in ["PIX - RECEBIMENTO:", "PIX -", "PIX TRANSF", "PIX RECEBIDO", "TED -", "DOC -", "TRANSF. COPIE E COLE", "TRANSFERENCIA"]:
+                                if desc_upper.startswith(prefixo):
+                                    nome_extraido = raw_desc[len(prefixo):].strip(" -/")
+                                    break
                             
-                            df_saidas_final = st.data_editor(
-                                df_saidas[['Cadastrar', 'Data', 'Descrição Bancária', 'Descrição para Sistema', 'Valor', 'Categoria', 'Projeto']],
-                                hide_index=True, use_container_width=True, key="ed_saidas_ofx"
-                            )
+                            if not nome_extraido:
+                                nome_extraido = raw_desc
 
-                        if st.button("💾 Salvar Lote Imediatamente", type="primary"):
-                            total_salvos = 0
+                            transacoes.append({
+                                "Data": dt,
+                                "Valor": abs(valor),
+                                "Descrição Bancária": raw_desc[:80],
+                                "Nome Identificado": nome_extraido.title() if len(nome_extraido) > 2 else raw_desc,
+                                "Tipo": "Entrada" if valor >= 0 else "Saída",
+                                "Status": "Não registrado"
+                            })
+
+                    df_ofx = pd.DataFrame(transacoes)
+
+                    if not df_ofx.empty:
+                        used_ids = set()
+                        for idx, row in df_ofx.iterrows():
+                            if not df_conta.empty:
+                                mask_tipo = df_conta['tipo'] == row['Tipo']
+                                mask_valor = df_conta['valor'] == row['Valor']
+                                mask_data = (pd.to_datetime(df_conta['data_competencia']).dt.date - row['Data']).apply(lambda x: abs(x.days)) <= 3
+                                mask_used = ~df_conta['id'].isin(used_ids)
+
+                                match = df_conta[mask_tipo & mask_valor & mask_data & mask_used]
+                                if not match.empty:
+                                    match_id = match.iloc[0]['id']
+                                    df_ofx.at[idx, 'Status'] = 'Já no sistema'
+                                    used_ids.add(match_id)
+
+                        df_novos = df_ofx[df_ofx['Status'] == 'Não registrado'].copy()
+
+                        if df_novos.empty:
+                            st.success("🎉 Todas as transações deste extrato já constam e batem com o sistema!")
+                        else:
+                            st.info(f"Encontramos **{len(df_novos)} transações** novas no extrato.")
                             
-                            if not df_entradas_final.empty:
-                                para_salvar_ent = df_entradas_final[df_entradas_final['Cadastrar'] == True]
-                                for _, row in para_salvar_ent.iterrows():
-                                    cc = None if row['Projeto'] == "Nenhum" else row['Projeto']
-                                    sb_request("lancamentos", "POST", [{
-                                        "descricao": row['Descrição para Sistema'], "tipo": "Entrada",
-                                        "valor": float(row['Valor']), "data_competencia": str(row['Data']),
-                                        "status": "Concluído", "data_pagamento": str(row['Data']),
-                                        "categoria_id": map_cat_id.get(row['Categoria']),
-                                        "conta_bancaria_id": conta_id, "centro_custo": cc, "conciliado": True
-                                    }])
-                                    total_salvos += 1
+                            cats_entrada = [c['nome'] for c in categorias_db if c['tipo'] == 'Entrada']
+                            cats_saida = [c['nome'] for c in categorias_db if c['tipo'] == 'Saída']
+                            
+                            # Garantia de carregamento seguro dos eventos para não dar erro
+                            if 'eventos_db' not in globals() and 'eventos_db' not in locals():
+                                eventos_db = carregar("eventos")
+                                
+                            nomes_eventos = ["Nenhum"] + [e['nome'] for e in eventos_db]
+                            map_cat_id = {c['nome']: c['id'] for c in categorias_db}
+                            
+                            df_entradas = df_novos[df_novos['Tipo'] == 'Entrada'].copy()
+                            df_saidas = df_novos[df_novos['Tipo'] == 'Saída'].copy()
+                            
+                            df_entradas_final = pd.DataFrame()
+                            df_saidas_final = pd.DataFrame()
 
-                            if not df_saidas_final.empty:
-                                para_salvar_sai = df_saidas_final[df_saidas_final['Cadastrar'] == True]
-                                for _, row in para_salvar_sai.iterrows():
-                                    cc = None if row['Projeto'] == "Nenhum" else row['Projeto']
-                                    sb_request("lancamentos", "POST", [{
-                                        "descricao": row['Descrição para Sistema'], "tipo": "Saída",
-                                        "valor": float(row['Valor']), "data_competencia": str(row['Data']),
-                                        "status": "Concluído", "data_pagamento": str(row['Data']),
-                                        "categoria_id": map_cat_id.get(row['Categoria']),
-                                        "conta_bancaria_id": conta_id, "centro_custo": cc, "conciliado": True
-                                    }])
-                                    total_salvos += 1
+                            if not df_entradas.empty:
+                                st.markdown("#### 🟢 Novas Entradas (Recebimentos)")
+                                df_entradas.insert(0, 'Cadastrar', True)
+                                df_entradas['Descrição para Sistema'] = "Extrato: " + df_entradas['Nome Identificado']
+                                df_entradas['Projeto'] = "Nenhum"
+                                df_entradas['Categoria'] = cats_entrada[0] if cats_entrada else ""
+                                
+                                df_entradas_final = st.data_editor(
+                                    df_entradas[['Cadastrar', 'Data', 'Descrição Bancária', 'Descrição para Sistema', 'Valor', 'Categoria', 'Projeto']],
+                                    hide_index=True, use_container_width=True, key="ed_entradas_ofx",
+                                    column_config={
+                                        "Categoria": st.column_config.SelectboxColumn("Categoria", options=cats_entrada, required=True),
+                                        "Projeto": st.column_config.SelectboxColumn("Projeto (Evento)", options=nomes_eventos, required=True)
+                                    }
+                                )
 
-                            if total_salvos > 0:
-                                st.cache_data.clear()
-                                st.success(f"✅ {total_salvos} transações salvas com sucesso! Vá para 'Conciliação Manual' para anexar os comprovantes pendentes.")
-                                time.sleep(2)
-                                st.rerun()
-                            else:
-                                st.warning("Marque pelo menos um item para salvar.")
+                            if not df_saidas.empty:
+                                st.markdown("#### 🔴 Novas Saídas (Pagamentos) - Serão marcadas como 'Falta Anexo' automaticamente")
+                                df_saidas.insert(0, 'Cadastrar', True)
+                                df_saidas['Descrição para Sistema'] = "Extrato: " + df_saidas['Nome Identificado']
+                                df_saidas['Categoria'] = cats_saida[0] if cats_saida else ""
+                                df_saidas['Projeto'] = "Nenhum"
+                                
+                                df_saidas_final = st.data_editor(
+                                    df_saidas[['Cadastrar', 'Data', 'Descrição Bancária', 'Descrição para Sistema', 'Valor', 'Categoria', 'Projeto']],
+                                    hide_index=True, use_container_width=True, key="ed_saidas_ofx",
+                                    column_config={
+                                        "Categoria": st.column_config.SelectboxColumn("Categoria", options=cats_saida, required=True),
+                                        "Projeto": st.column_config.SelectboxColumn("Projeto (Evento)", options=nomes_eventos, required=True)
+                                    }
+                                )
+
+                            if st.button("💾 Salvar Lote Imediatamente", type="primary"):
+                                total_salvos = 0
+                                
+                                if not df_entradas_final.empty:
+                                    para_salvar_ent = df_entradas_final[df_entradas_final['Cadastrar'] == True]
+                                    for _, row in para_salvar_ent.iterrows():
+                                        cc = None if row['Projeto'] == "Nenhum" else row['Projeto']
+                                        sb_request("lancamentos", "POST", [{
+                                            "descricao": row['Descrição para Sistema'], "tipo": "Entrada",
+                                            "valor": float(row['Valor']), "data_competencia": str(row['Data']),
+                                            "status": "Concluído", "data_pagamento": str(row['Data']),
+                                            "categoria_id": map_cat_id.get(row['Categoria']),
+                                            "conta_bancaria_id": conta_id, "centro_custo": cc, "conciliado": True
+                                        }])
+                                        total_salvos += 1
+
+                                if not df_saidas_final.empty:
+                                    para_salvar_sai = df_saidas_final[df_saidas_final['Cadastrar'] == True]
+                                    for _, row in para_salvar_sai.iterrows():
+                                        cc = None if row['Projeto'] == "Nenhum" else row['Projeto']
+                                        sb_request("lancamentos", "POST", [{
+                                            "descricao": row['Descrição para Sistema'], "tipo": "Saída",
+                                            "valor": float(row['Valor']), "data_competencia": str(row['Data']),
+                                            "status": "Concluído", "data_pagamento": str(row['Data']),
+                                            "categoria_id": map_cat_id.get(row['Categoria']),
+                                            "conta_bancaria_id": conta_id, "centro_custo": cc, "conciliado": True
+                                        }])
+                                        total_salvos += 1
+
+                                if total_salvos > 0:
+                                    st.session_state['ofx_processado'] = None
+                                    st.cache_data.clear()
+                                    st.success(f"✅ {total_salvos} transações salvas com sucesso! Vá para 'Conciliação Manual' para anexar os comprovantes pendentes.")
+                                    time.sleep(2)
+                                    st.rerun()
+                                else:
+                                    st.warning("Marque pelo menos um item para salvar.")
 
         with tab_manual:
             st.subheader("Lista de Lançamentos e Pendências de Anexos")
