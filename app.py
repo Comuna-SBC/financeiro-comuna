@@ -2052,12 +2052,22 @@ elif page == "Conciliação Bancária":
                             cats_entrada = [c['nome'] for c in categorias_db if c['tipo'] == 'Entrada']
                             cats_saida = [c['nome'] for c in categorias_db if c['tipo'] == 'Saída']
                             
-                            # Garantia de carregamento seguro dos eventos para não dar erro
                             if 'eventos_db' not in globals() and 'eventos_db' not in locals():
                                 eventos_db = carregar("eventos")
                                 
                             nomes_eventos = ["Nenhum"] + [e['nome'] for e in eventos_db]
                             map_cat_id = {c['nome']: c['id'] for c in categorias_db}
+                            
+                            # LOGICA DE AUTO-ATRIBUIÇÃO DE CENTAVOS (EVENTOS)
+                            mapa_centavos_evento = {}
+                            if eventos_db:
+                                for ev in eventos_db:
+                                    cent = ev.get('codigo_centavos')
+                                    if cent:
+                                        mapa_centavos_evento[str(cent).zfill(2)] = ev['nome']
+                                        
+                            cat_padrao_entrada = cats_entrada[0] if cats_entrada else ""
+                            cat_inscricoes = "Inscrições de Eventos" if "Inscrições de Eventos" in cats_entrada else cat_padrao_entrada
                             
                             df_entradas = df_novos[df_novos['Tipo'] == 'Entrada'].copy()
                             df_saidas = df_novos[df_novos['Tipo'] == 'Saída'].copy()
@@ -2069,8 +2079,26 @@ elif page == "Conciliação Bancária":
                                 st.markdown("#### 🟢 Novas Entradas (Recebimentos)")
                                 df_entradas.insert(0, 'Cadastrar', True)
                                 df_entradas['Descrição para Sistema'] = "Extrato: " + df_entradas['Nome Identificado']
-                                df_entradas['Projeto'] = "Nenhum"
-                                df_entradas['Categoria'] = cats_entrada[0] if cats_entrada else ""
+                                
+                                projetos_list = []
+                                categorias_list = []
+                                
+                                for _, row in df_entradas.iterrows():
+                                    val = float(row['Valor'])
+                                    # Extraindo apenas a casa dos centavos matematicamente
+                                    centavos = int(round(val * 100)) % 100
+                                    str_cent = f"{centavos:02d}"
+                                    
+                                    # Evitar que valores .00 (sem centavos) sejam amarrados a algum evento indevidamente
+                                    if str_cent != "00" and str_cent in mapa_centavos_evento:
+                                        projetos_list.append(mapa_centavos_evento[str_cent])
+                                        categorias_list.append(cat_inscricoes)
+                                    else:
+                                        projetos_list.append("Nenhum")
+                                        categorias_list.append(cat_padrao_entrada)
+                                        
+                                df_entradas['Projeto'] = projetos_list
+                                df_entradas['Categoria'] = categorias_list
                                 
                                 df_entradas_final = st.data_editor(
                                     df_entradas[['Cadastrar', 'Data', 'Descrição Bancária', 'Descrição para Sistema', 'Valor', 'Categoria', 'Projeto']],
