@@ -2125,6 +2125,7 @@ elif page == "Conciliação Bancária":
 
                             if st.button("💾 Salvar Lote Imediatamente", type="primary"):
                                 total_salvos = 0
+                                map_evento_obj = {e['nome']: e for e in eventos_db}
                                 
                                 if not df_entradas_final.empty:
                                     para_salvar_ent = df_entradas_final[df_entradas_final['Cadastrar'] == True]
@@ -2141,20 +2142,32 @@ elif page == "Conciliação Bancária":
                                         }])
                                         total_salvos += 1
                                         
-                                        # 2. Se for associado a um Projeto/Evento, salva uma cópia no Bolsão de OFX do Evento
+                                        # 2. Se for associado a um Projeto/Evento, salva a cópia
                                         if cc and cc != "Nenhum":
-                                            evento_id = map_evento_id.get(cc)
-                                            lanc_id = novo_lancamento[0]['id'] if (novo_lancamento and isinstance(novo_lancamento, list)) else None
-                                            
-                                            if evento_id and lanc_id:
-                                                sb_request("creditos_ofx", "POST", [{
-                                                    "evento_id": evento_id,
-                                                    "lancamento_id": lanc_id,
-                                                    "data": str(row['Data']),
-                                                    "valor": float(row['Valor']),
-                                                    "descricao_bancaria": str(row['Descrição Bancária']),
-                                                    "status": "Disponível"
-                                                }])
+                                            evento_obj = map_evento_obj.get(cc)
+                                            if evento_obj:
+                                                lanc_id = None
+                                                if novo_lancamento and isinstance(novo_lancamento, list) and len(novo_lancamento) > 0:
+                                                    lanc_id = novo_lancamento[0].get('id')
+                                                elif novo_lancamento and isinstance(novo_lancamento, dict):
+                                                    lanc_id = novo_lancamento.get('id')
+                                                
+                                                if lanc_id:
+                                                    payload_credito = {
+                                                        "evento_id": evento_obj['id'],
+                                                        "lancamento_id": lanc_id,
+                                                        "data": str(row['Data']),
+                                                        "valor": float(row['Valor']),
+                                                        "descricao_bancaria": str(row['Descrição Bancária']),
+                                                        "status": "Disponível"
+                                                    }
+                                                    
+                                                    # Injeta o identificador da igreja se existir para passar no RLS
+                                                    if evento_obj.get('igreja_id'):
+                                                        payload_credito['igreja_id'] = evento_obj['igreja_id']
+                                                        
+                                                    # Envio como dicionário simples (sem os colchetes de lista)
+                                                    sb_request("creditos_ofx", "POST", payload_credito)
 
                                 if not df_saidas_final.empty:
                                     para_salvar_sai = df_saidas_final[df_saidas_final['Cadastrar'] == True]
