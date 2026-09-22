@@ -2142,15 +2142,13 @@ elif page == "Conciliação Bancária":
                                         }])
                                         total_salvos += 1
                                         
-                                        # 2. Se for associado a um Projeto/Evento, salva a cópia
+                                        # 2. Se for associado a um Projeto/Evento, salva a cópia no Bolsão
                                         if cc and cc != "Nenhum":
                                             evento_obj = map_evento_obj.get(cc)
                                             if evento_obj:
                                                 lanc_id = None
-                                                if novo_lancamento and isinstance(novo_lancamento, list) and len(novo_lancamento) > 0:
+                                                if isinstance(novo_lancamento, list) and len(novo_lancamento) > 0:
                                                     lanc_id = novo_lancamento[0].get('id')
-                                                elif novo_lancamento and isinstance(novo_lancamento, dict):
-                                                    lanc_id = novo_lancamento.get('id')
                                                 
                                                 if lanc_id:
                                                     payload_credito = {
@@ -2162,12 +2160,10 @@ elif page == "Conciliação Bancária":
                                                         "status": "Disponível"
                                                     }
                                                     
-                                                    # Injeta o identificador da igreja se existir para passar no RLS
-                                                    if evento_obj.get('igreja_id'):
-                                                        payload_credito['igreja_id'] = evento_obj['igreja_id']
-                                                        
-                                                    # Envio como dicionário simples (sem os colchetes de lista)
-                                                    sb_request("creditos_ofx", "POST", payload_credito)
+                                                    # POST em formato de lista [] para evitar erros 400
+                                                    res_credito = sb_request("creditos_ofx", "POST", [payload_credito])
+                                                    if res_credito is None:
+                                                        st.error(f"⚠️ O lançamento de R$ {row['Valor']} foi salvo, mas falhou ao ir para o Bolsão.")
 
                                 if not df_saidas_final.empty:
                                     para_salvar_sai = df_saidas_final[df_saidas_final['Cadastrar'] == True]
@@ -2185,7 +2181,7 @@ elif page == "Conciliação Bancária":
                                 if total_salvos > 0:
                                     st.session_state['ofx_processado'] = None
                                     st.cache_data.clear()
-                                    st.success(f"✅ {total_salvos} transações salvas com sucesso! As entradas de eventos já foram enviadas para o Bolsão.")
+                                    st.success(f"✅ {total_salvos} transações salvas! As entradas de eventos já foram enviadas para o Bolsão.")
                                     time.sleep(2)
                                     st.rerun()
                                 else:
