@@ -2670,17 +2670,22 @@ elif page == "Inscrições e Comprovantes":
                         c_act1, c_act2 = st.columns(2)
                         
                         with c_act1.popover("💵 Adicionar Pagamento Manual"):
-                            val_manual = st.number_input("Valor (R$)", value=float(falta), min_value=0.01, key=f"val_man_{insc['id']}")
+                            # Deixamos o min_value em 0.0 para não quebrar a tela quando a pessoa não dever mais nada
+                            val_manual = st.number_input("Valor (R$)", value=float(falta), min_value=0.0, format="%.2f", key=f"val_man_{insc['id']}")
+                            
                             if st.button("Lançar Pagamento", key=f"btn_man_{insc['id']}", type="primary", use_container_width=True):
-                                sb_request("inscricao_pagamentos", "POST", {
-                                    "inscricao_id": insc["id"], "numero_parcela": len(pgs_insc) + 1,
-                                    "valor": float(val_manual), "data_pagamento": str(hoje_sp()),
-                                    "status": "Aprovado"
-                                })
-                                novo_pago = v_pago + val_manual
-                                n_st = "Completo" if novo_pago >= v_tot - 0.01 else "Parcial"
-                                sb_request("inscricoes", "PATCH", {"valor_pago": novo_pago, "status_pagamento": n_st}, filtros={"id": f"eq.{insc['id']}"})
-                                st.cache_data.clear(); st.rerun()
+                                if val_manual <= 0:
+                                    st.error("⚠️ Digite um valor maior que zero para registrar o pagamento.")
+                                else:
+                                    sb_request("inscricao_pagamentos", "POST", {
+                                        "inscricao_id": insc["id"], "numero_parcela": len(pgs_insc) + 1,
+                                        "valor": float(val_manual), "data_pagamento": str(hoje_sp()),
+                                        "status": "Aprovado"
+                                    })
+                                    novo_pago = v_pago + val_manual
+                                    n_st = "Completo" if novo_pago >= v_tot - 0.01 else "Parcial"
+                                    sb_request("inscricoes", "PATCH", {"valor_pago": novo_pago, "status_pagamento": n_st}, filtros={"id": f"eq.{insc['id']}"})
+                                    st.cache_data.clear(); st.rerun()
                                 
                         if c_act2.button("❌ Marcar como Desistente", key=f"desist_{insc['id']}", use_container_width=True):
                             sb_request("inscricoes", "PATCH", {"status_pagamento": "Desistente"}, filtros={"id": f"eq.{insc['id']}"})
