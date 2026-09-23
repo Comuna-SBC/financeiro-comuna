@@ -663,22 +663,84 @@ if qp.get("pagina") == "inscricao":
 if "session" not in st.session_state:
     st.session_state["session"] = None
 
+# 1. INTERCEPTADOR DE RECUPERAÇÃO DE SENHA (Lê o código da URL)
+if "code" in st.query_params:
+    try:
+        auth_code = st.query_params["code"]
+        res = supabase.auth.exchange_code_for_session(auth_code)
+        st.session_state["session"] = res.session
+        st.session_state["redefinir_senha"] = True
+        st.query_params.clear() # Limpa a URL
+        st.rerun()
+    except Exception as e:
+        st.error("O link de recuperação expirou ou é inválido. Solicite um novo.")
+        st.query_params.clear()
+
+# 2. TELA DE NOVA SENHA (Só aparece via link do e-mail)
+if st.session_state.get("redefinir_senha"):
+    st.markdown("<h2 style='text-align:center; margin-top: 50px;'>🔒 Criar Nova Senha</h2>", unsafe_allow_html=True)
+    col_r1, col_r2, col_r3 = st.columns([1, 1.5, 1])
+    with col_r2:
+        st.info("Você solicitou a recuperação de senha. Crie uma nova senha abaixo.")
+        with st.form("form_nova_senha"):
+            nova_senha = st.text_input("Digite a nova senha (mínimo 6 caracteres)", type="password")
+            confirmar_senha = st.text_input("Confirme a nova senha", type="password")
+            
+            if st.form_submit_button("Salvar Senha e Entrar", type="primary", use_container_width=True):
+                if len(nova_senha) < 6:
+                    st.error("⚠️ A senha deve ter pelo menos 6 caracteres.")
+                elif nova_senha != confirmar_senha:
+                    st.error("⚠️ As senhas não coincidem.")
+                else:
+                    with st.spinner("Atualizando senha..."):
+                        try:
+                            supabase.auth.update_user({"password": nova_senha})
+                            st.session_state["redefinir_senha"] = False
+                            st.success("✅ Senha atualizada com sucesso! Entrando no sistema...")
+                            time.sleep(1.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao atualizar senha: {e}")
+    st.stop()
+
+# 3. TELA DE LOGIN PRINCIPAL
 if not st.session_state["session"]:
     st.markdown("<h2 style='text-align:center; margin-top: 50px;'>🔐 Acesso Restrito</h2>", unsafe_allow_html=True)
     col_l1, col_l2, col_l3 = st.columns([1, 1.5, 1])
+    
     with col_l2:
-        with st.form("login_form"):
-            st.markdown("Entre com suas credenciais para acessar o painel de administração.")
-            email = st.text_input("E-mail")
-            senha = st.text_input("Senha", type="password")
-            submit = st.form_submit_button("Entrar", use_container_width=True, type="primary")
-            if submit:
-                try:
-                    res = supabase.auth.sign_in_with_password({"email": email, "password": senha})
-                    st.session_state["session"] = res.session
-                    st.rerun()
-                except Exception as e:
-                    st.error("Credenciais inválidas. Verifique seu e-mail e senha.")
+        tab_login, tab_recuperar = st.tabs(["🔐 Entrar", "🔑 Esqueci minha senha"])
+        
+        # --- ABA: ENTRAR ---
+        with tab_login:
+            with st.form("login_form"):
+                st.markdown("Entre com suas credenciais para acessar o painel de administração.")
+                email = st.text_input("E-mail")
+                senha = st.text_input("Senha", type="password")
+                submit = st.form_submit_button("Entrar", use_container_width=True, type="primary")
+                if submit:
+                    try:
+                        res = supabase.auth.sign_in_with_password({"email": email, "password": senha})
+                        st.session_state["session"] = res.session
+                        st.rerun()
+                    except Exception as e:
+                        st.error("Credenciais inválidas. Verifique seu e-mail e senha.")
+                        
+        # --- ABA: RECUPERAÇÃO DE SENHA ---
+        with tab_recuperar:
+            st.markdown("Digite seu e-mail cadastrado para receber o link.")
+            with st.form("form_recuperar"):
+                email_rec = st.text_input("E-mail")
+                if st.form_submit_button("Enviar Link de Recuperação", type="primary", use_container_width=True):
+                    if not email_rec:
+                        st.warning("⚠️ Digite um e-mail válido.")
+                    else:
+                        with st.spinner("Enviando e-mail..."):
+                            try:
+                                supabase.auth.reset_password_for_email(email_rec)
+                                st.success("📩 E-mail enviado! Verifique sua caixa de entrada e a pasta de spam.")
+                            except Exception as e:
+                                st.error("Erro ao enviar. Verifique se o e-mail está correto.")
     st.stop()
 
 # Carrega os dados uma vez para o motor ler
