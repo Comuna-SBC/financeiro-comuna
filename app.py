@@ -3231,6 +3231,7 @@ elif page == "Gestão de Usuários":
 
     # ------------------------------------------
    # ------------------------------------------
+   # ------------------------------------------
     # ABA 1: NOVO USUÁRIO (Criação + Senha Inicial)
     # ------------------------------------------
     with tab_novo:
@@ -3240,46 +3241,59 @@ elif page == "Gestão de Usuários":
         with st.form("form_novo_usuario", clear_on_submit=True):
             n_nome = st.text_input("Nome Completo")
             n_email = st.text_input("E-mail válido (Será usado para login)")
-            n_telefone = st.text_input("Telefone / WhatsApp") # <--- CAMPO NOVO AQUI
+            n_telefone = st.text_input("Telefone / WhatsApp")
             n_perfil = st.selectbox("Perfil de Acesso", ["Visão Total Tesouraria", "Visão Conselho", "Visão Eventos", "Admin", "Sem Acesso"])
             n_senha = st.text_input("Senha Inicial (Mínimo 6 caracteres)", value="Igreja@123", type="password")
             
             if st.form_submit_button("💾 Criar Usuário", type="primary"):
-                # Adicionamos o telefone na validação
                 if not n_nome or not n_email or not n_telefone or len(n_senha) < 6:
                     st.warning("⚠️ Preencha todos os campos corretamente (incluindo o telefone) e use uma senha de pelo menos 6 caracteres.")
                 else:
-                    with st.spinner("Criando conta e salvando perfil..."):
+                    with st.spinner("Criando conta no Auth e na Tabela de Usuários..."):
                         admin_session = st.session_state.get("session")
+                        auth_sucesso = False
+                        erro_auth = ""
                         
+                        # PASSO 1: Tenta criar a Autenticação PRIMEIRO
                         try:
-                            supabase.auth.sign_up({"email": n_email, "password": n_senha})
-                        except Exception:
-                            pass 
+                            res_auth = supabase.auth.sign_up({"email": n_email, "password": n_senha})
+                            if res_auth and res_auth.user:
+                                auth_sucesso = True
+                        except Exception as e:
+                            erro_auth = str(e)
                             
+                        # Restaura a sessão do Admin imediatamente (para o Supabase não te deslogar)
                         if admin_session:
                             try:
                                 supabase.auth.set_session(admin_session.access_token, admin_session.refresh_token)
                             except:
                                 pass
+                                
+                        # PASSO 2: Se a Autenticação falhou, AVISA e PARA a operação.
+                        if not auth_sucesso:
+                            if "already registered" in erro_auth.lower() or "já existe" in erro_auth.lower():
+                                st.error("❌ Este e-mail já está preso na aba Authentication do Supabase. Vá até lá, apague-o manualmente e tente de novo.")
+                            elif "rate limit" in erro_auth.lower():
+                                st.error("❌ O Supabase bloqueou por limite de segurança (muitos cadastros seguidos). Aguarde alguns minutos.")
+                            else:
+                                st.error(f"❌ O Supabase recusou a criação do login (Auth). Detalhe do banco: {erro_auth}")
                         
-                        # Adicionamos o telefone no envio para o banco
-                        payload_novo = {
-                            "nome": n_nome,
-                            "email": n_email,
-                            "telefone": n_telefone, # <--- CAMPO NOVO AQUI
-                            "perfil": n_perfil
-                        }
-                        
-                        try:
-                            supabase.table("usuarios").insert(payload_novo).execute()
-                            
-                            st.success("✅ Usuário criado com sucesso!")
-                            st.cache_data.clear()
-                            time.sleep(1.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Erro ao salvar na tabela de usuários. (Detalhe: {e})")
+                        # PASSO 3: O Auth deu certo! Agora sim, salvamos o perfil na tabela.
+                        else:
+                            payload_novo = {
+                                "nome": n_nome,
+                                "email": n_email,
+                                "telefone": n_telefone,
+                                "perfil": n_perfil
+                            }
+                            try:
+                                supabase.table("usuarios").insert(payload_novo).execute()
+                                st.success("✅ Tudo certo! Usuário e Login criados com sucesso.")
+                                st.cache_data.clear()
+                                time.sleep(1.5)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ O Login foi criado, mas a tabela recusou o perfil. (Erro: {e})")
 
     # ------------------------------------------
     # ABA 2: LISTA, EDIÇÃO E EXCLUSÃO
