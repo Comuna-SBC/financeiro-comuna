@@ -3232,6 +3232,9 @@ elif page == "Gestão de Usuários":
     # ------------------------------------------
     # ABA 1: NOVO USUÁRIO (Criação + Senha Inicial)
     # ------------------------------------------
+    # ------------------------------------------
+    # ABA 1: NOVO USUÁRIO (Criação + Senha Inicial)
+    # ------------------------------------------
     with tab_novo:
         st.markdown("### Cadastrar Novo Usuário")
         st.info("💡 **Dica:** Defina uma senha inicial (ex: `Igreja@123`). O usuário poderá entrar com ela e depois usar a opção 'Esqueci minha senha' na tela de login para criar uma senha própria.")
@@ -3247,29 +3250,40 @@ elif page == "Gestão de Usuários":
                     st.warning("⚠️ Preencha todos os campos corretamente e use uma senha de pelo menos 6 caracteres.")
                 else:
                     with st.spinner("Criando conta e salvando perfil..."):
+                        # Guarda a sessão atual do Admin
+                        admin_session = st.session_state.get("session")
+                        
                         try:
-                            # 1. Cria a conta no sistema de Autenticação do Supabase
-                            try:
-                                res_auth = supabase.auth.sign_up({"email": n_email, "password": n_senha})
-                            except Exception as e:
-                                # Se der erro aqui, geralmente é porque o e-mail já existe no Auth. 
-                                # Ignoramos e seguimos para garantir que ele exista na tabela de usuários.
-                                pass 
+                            # 1. Cria a conta no Auth do Supabase
+                            supabase.auth.sign_up({"email": n_email, "password": n_senha})
+                        except Exception as e:
+                            pass # Se já existir no Auth, engolimos o erro para seguir e gravar a tabela
                             
-                            # 2. Salva o Perfil na tabela pública
-                            payload_novo = {
-                                "nome": n_nome,
-                                "email": n_email,
-                                "perfil": n_perfil
-                            }
-                            sb_request("usuarios", "POST", [payload_novo])
+                        # Restaura a sessão do Admin (evita que você perca o seu acesso após criar um usuário)
+                        if admin_session:
+                            try:
+                                supabase.auth.set_session(admin_session.access_token, admin_session.refresh_token)
+                            except:
+                                pass
+                        
+                        # 2. Salva o Perfil na tabela pública
+                        payload_novo = {
+                            "nome": n_nome,
+                            "email": n_email,
+                            "perfil": n_perfil
+                        }
+                        
+                        try:
+                            # Usamos comando direto e não o sb_request para capturar erros detalhados
+                            supabase.table("usuarios").insert(payload_novo).execute()
                             
                             st.success("✅ Usuário criado com sucesso!")
                             st.cache_data.clear()
                             time.sleep(1.5)
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Erro ao salvar usuário no banco: {e}")
+                            st.error(f"❌ Erro ao salvar na tabela de usuários. (Detalhe: {e})")
+                            st.info("💡 Dica: Pode ser que esse e-mail já esteja travado na aba 'Authentication' do Supabase. Vá até lá, apague manualmente o e-mail, e tente criar de novo!")
 
     # ------------------------------------------
     # ABA 2: LISTA, EDIÇÃO E EXCLUSÃO
