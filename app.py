@@ -3152,112 +3152,121 @@ elif page == "Exportar Contabilidade":
                     )
 
 # ==========================================
-# GESTÃO DE USUÁRIOS
+# ==========================================
+# GESTÃO DE USUÁRIOS (Acesso restrito ao Admin)
 # ==========================================
 elif page == "Gestão de Usuários":
-    st.title("Gestão de Usuários e Perfis")
-    st.markdown("Crie acessos e defina as permissões para a Tesouraria, Conselho ou Líderes de Eventos.")
+    st.title("Gestão de Usuários")
+    
+    # Carrega os usuários direto do banco
+    usuarios_lista = carregar_usuarios()
+    df_usuarios = pd.DataFrame(usuarios_lista)
 
-    col_nova, col_edit = st.columns(2)
-    with col_nova:
-        with st.expander("➕ Novo Usuário", expanded=True):
-            with st.form("form_usuario", clear_on_submit=True):
-                n_nome = st.text_input("Nome Completo *")
-                n_email = st.text_input("Email *")
-                n_senha = st.text_input("Senha Temporária *", type="password", help="Mínimo de 6 caracteres obrigatório.")
-                n_tel = st.text_input("Telefone (WhatsApp) *")
-                n_cpf = st.text_input("CPF (Opcional)")
-                n_perfil = st.selectbox("Perfil de Acesso *", ["Visão Total Tesouraria", "Visão Conselho", "Visão Eventos, Admin"])
-                
-                if st.form_submit_button("Cadastrar Usuário", use_container_width=True, type="primary"):
-                    if not n_nome or not n_email or not n_tel or not n_senha:
-                        st.warning("⚠️ Nome, Email, Senha e Telefone são obrigatórios.")
-                    elif len(n_senha) < 6:
-                        st.warning("⚠️ A senha deve ter no mínimo 6 caracteres para ser aceita pelo sistema.")
-                    else:
+    tab_lista, tab_novo = st.tabs(["📋 Usuários Cadastrados", "➕ Novo Usuário"])
+
+    # ------------------------------------------
+    # ABA 1: NOVO USUÁRIO (Criação + Senha Inicial)
+    # ------------------------------------------
+    with tab_novo:
+        st.markdown("### Cadastrar Novo Usuário")
+        st.info("💡 **Dica:** Defina uma senha inicial (ex: `Igreja@123`). O usuário poderá entrar com ela e depois usar a opção 'Esqueci minha senha' na tela de login para criar uma senha própria.")
+        
+        with st.form("form_novo_usuario", clear_on_submit=True):
+            n_nome = st.text_input("Nome Completo")
+            n_email = st.text_input("E-mail válido (Será usado para login)")
+            n_perfil = st.selectbox("Perfil de Acesso", ["Visão Total Tesouraria", "Visão Conselho", "Visão Eventos", "Admin", "Sem Acesso"])
+            n_senha = st.text_input("Senha Inicial (Mínimo 6 caracteres)", value="Igreja@123", type="password")
+            
+            if st.form_submit_button("💾 Criar Usuário", type="primary"):
+                if not n_nome or not n_email or len(n_senha) < 6:
+                    st.warning("⚠️ Preencha todos os campos corretamente e use uma senha de pelo menos 6 caracteres.")
+                else:
+                    with st.spinner("Criando conta e salvando perfil..."):
                         try:
-                            # 1. Cria conexão ADMIN (100% segura, rodando apenas no servidor)
-                            from supabase import create_client
-                            admin_sb = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_SERVICE_KEY"])
+                            # 1. Cria a conta no sistema de Autenticação do Supabase
+                            try:
+                                res_auth = supabase.auth.sign_up({"email": n_email, "password": n_senha})
+                            except Exception as e:
+                                # Se der erro aqui, geralmente é porque o e-mail já existe no Auth. 
+                                # Ignoramos e seguimos para garantir que ele exista na tabela de usuários.
+                                pass 
                             
-                            # 2. Usa a rota de Administração (Cria o usuário sem logar e sem conflito de sessão)
-                            admin_sb.auth.admin.create_user({
+                            # 2. Salva o Perfil na tabela pública
+                            payload_novo = {
+                                "nome": n_nome,
                                 "email": n_email,
-                                "password": n_senha,
-                                "email_confirm": True  # O usuário não precisa confirmar e-mail!
-                            })
-                            
-                            # 3. Registra dados do perfil na tabela 'usuarios'
-                            payload = {
-                                "nome": n_nome, "email": n_email, "telefone": n_tel, 
-                                "cpf": n_cpf if n_cpf else None, "perfil": n_perfil, "status": "Ativo"
+                                "perfil": n_perfil
                             }
-                            res = sb_request("usuarios", "POST", [payload])
+                            sb_request("usuarios", "POST", [payload_novo])
                             
-                            if res is not None:
-                                st.cache_data.clear()
-                                st.success(f"✅ Usuário {n_nome} criado com sucesso e e-mail já confirmado!")
-                                time.sleep(1.5)
-                                st.rerun()
-                                
+                            st.success("✅ Usuário criado com sucesso!")
+                            st.cache_data.clear()
+                            time.sleep(1.5)
+                            st.rerun()
                         except Exception as e:
-                            erro_str = str(e)
-                            if "already registered" in erro_str.lower() or "already exists" in erro_str.lower():
-                                st.error("❌ Este e-mail já possui uma conta no sistema.")
-                            else:
-                                st.error(f"❌ Erro ao criar usuário: {erro_str}")
+                            st.error(f"Erro ao salvar usuário no banco: {e}")
 
-    with col_edit:
-        with st.expander("✏️ Editar ou Excluir Usuário (Tabela)"):
-            if usuarios_db:
-                user_opcoes = {f"{u['nome']} ({u['perfil']})": u for u in usuarios_db}
-                user_sel = st.selectbox("Selecione o Usuário", list(user_opcoes.keys()))
-                u_data = user_opcoes[user_sel]
-
-                with st.form("form_edit_user"):
-                    e_nome = st.text_input("Nome Completo", value=u_data.get('nome', ''))
-                    e_email = st.text_input("Email", value=u_data.get('email', ''))
-                    e_tel = st.text_input("Telefone", value=u_data.get('telefone', ''))
-                    e_cpf = st.text_input("CPF", value=u_data.get('cpf', ''))
+    # ------------------------------------------
+    # ABA 2: LISTA, EDIÇÃO E EXCLUSÃO
+    # ------------------------------------------
+    with tab_lista:
+        st.markdown("### Gerenciar Acessos")
+        
+        if df_usuarios.empty:
+            st.warning("Nenhum usuário encontrado.")
+        else:
+            for idx, row in df_usuarios.iterrows():
+                u_id = str(row.get('id'))
+                u_nome = row.get('nome', 'Sem Nome')
+                u_email = row.get('email', '')
+                u_perfil = row.get('perfil', 'Sem Acesso')
+                
+                # Cria um bloco expansível para cada usuário
+                with st.expander(f"👤 {u_nome} — Perfil: {u_perfil}"):
+                    col_ed, col_ac = st.columns([1.5, 1])
                     
-                    perfis_lista = ["Visão Total Tesouraria", "Visão Conselho", "Visão Eventos"]
-                    idx_perfil = perfis_lista.index(u_data.get('perfil')) if u_data.get('perfil') in perfis_lista else 0
-                    e_perfil = st.selectbox("Perfil de Acesso", perfis_lista, index=idx_perfil)
-                    
-                    c1, c2 = st.columns(2)
-                    btn_upd = c1.form_submit_button("💾 Atualizar", use_container_width=True)
-                    btn_del = c2.form_submit_button("🗑️ Excluir", use_container_width=True)
-                    st.caption("Nota: A exclusão aqui remove apenas o perfil da tabela. Para deletar a conta de login permanentemente, acesse o painel do Supabase Authentication.")
-
-                    if btn_upd:
-                        payload = {"nome": e_nome, "email": e_email, "telefone": e_tel, "cpf": e_cpf, "perfil": e_perfil}
-                        sb_request("usuarios", "PATCH", payload, filtros={"id": f"eq.{u_data['id']}"})
-                        st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1); st.rerun()
+                    # --- LADO ESQUERDO: Edição de Perfil ---
+                    with col_ed:
+                        st.markdown("##### ✏️ Editar Permissões")
+                        e_nome = st.text_input("Nome", value=u_nome, key=f"ed_nome_{u_id}")
+                        e_email = st.text_input("E-mail (Login)", value=u_email, disabled=True, key=f"ed_email_{u_id}", help="O e-mail de login não pode ser alterado por aqui.")
                         
-                    if btn_del:
-                        try:
-                            # 1. Cria a conexão Admin para apagar do sistema de Autenticação do Supabase
-                            from supabase import create_client
-                            admin_sb = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_SERVICE_KEY"])
+                        opcoes_perfil = ["Visão Total Tesouraria", "Visão Conselho", "Visão Eventos", "Admin", "Sem Acesso"]
+                        idx_perfil = opcoes_perfil.index(u_perfil) if u_perfil in opcoes_perfil else 4
+                        e_perfil = st.selectbox("Perfil", opcoes_perfil, index=idx_perfil, key=f"ed_perf_{u_id}")
+                        
+                        if st.button("💾 Salvar Alterações", key=f"btn_salvar_{u_id}"):
+                            payload_edit = {"nome": e_nome, "perfil": e_perfil}
+                            sb_request("usuarios", "PATCH", payload_edit, filtros={"id": f"eq.{u_id}"})
+                            st.success("Perfil atualizado!")
+                            st.cache_data.clear()
+                            time.sleep(1)
+                            st.rerun()
                             
-                            # Apaga o usuário do Auth (liberando o e-mail)
-                            admin_sb.auth.admin.delete_user(u_data['id'])
-                        except Exception as ex:
-                            # Se o ID da tabela diferir do UUID do Auth, prossegue para limpar a base
-                            pass
+                    # --- LADO DIREITO: Senha e Exclusão ---
+                    with col_ac:
+                        st.markdown("##### 🔐 Ações da Conta")
                         
-                        # 2. Deleta o registro da tabela 'usuarios'
-                        sb_request("usuarios", "DELETE", filtros={"id": f"eq.{u_data['id']}"})
-                        st.cache_data.clear()
-                        st.success("✅ Usuário excluído completamente (Auth e Tabela)!")
-                        time.sleep(1)
-                        st.rerun()
-            else:
-                st.info("Nenhum usuário cadastrado.")
-
-    st.markdown("---")
-    st.markdown("### Usuários Cadastrados")
-    if usuarios_db:
-        df_users = pd.DataFrame(usuarios_db)[['nome', 'email', 'telefone', 'perfil']]
-        df_users.columns = ['Nome', 'Email', 'Telefone', 'Perfil']
-        st.dataframe(df_users, use_container_width=True, hide_index=True)
+                        # 1. Botão Esqueci Minha Senha
+                        if st.button("📧 Enviar Link de Recuperação", key=f"btn_reset_{u_id}", help="Envia um e-mail para o usuário redefinir a própria senha"):
+                            try:
+                                supabase.auth.reset_password_for_email(e_email)
+                                st.success("E-mail enviado!")
+                            except Exception as e:
+                                st.error("Falha ao enviar e-mail. Verifique se o e-mail existe no Auth.")
+                        
+                        st.markdown("---")
+                        
+                        # 2. Botão Excluir Usuário
+                        # Usa checkbox de confirmação para evitar cliques acidentais
+                        confirma_del = st.checkbox("Liberar exclusão", key=f"chk_del_{u_id}")
+                        if confirma_del:
+                            if st.button("🗑️ Excluir Definitivamente", key=f"btn_del_{u_id}", type="primary"):
+                                try:
+                                    sb_request("usuarios", "DELETE", filtros={"id": f"eq.{u_id}"})
+                                    st.success("Usuário removido do sistema!")
+                                    st.cache_data.clear()
+                                    time.sleep(1)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Erro ao excluir. Pode haver lançamentos atrelados a ele. Erro: {e}")
