@@ -2861,7 +2861,18 @@ elif page == "Analytics Financeiro":
 
         aba_comp, aba_caixa = st.tabs(["📊 Mês de Competência", "💰 Fluxo de Caixa"])
 
-        # Função encapsulada para não repetir as 100 linhas de código em cada aba
+        # Função de formatação para os gráficos de barra (K)
+        def formata_k(v):
+            if pd.isna(v) or v == 0:
+                return ""
+            if v >= 10000:
+                return f"{int(round(v/1000, 0))}K"
+            elif v >= 1000:
+                return f"{v/1000:.1f}K".replace(".", ",")
+            else:
+                return f"{int(v)}"
+
+        # Função encapsulada para não repetir as linhas de código em cada aba
         def renderizar_painel_analytics(df_source, col_mes_ano, col_data_ref, tab_key):
             st.subheader("Filtros")
             col_f1, col_f2 = st.columns(2)
@@ -2927,8 +2938,19 @@ elif page == "Analytics Financeiro":
                     metas_map = df_metas.set_index('mes_ano_fmt').to_dict('index')
 
                 fig = go.Figure()
-                fig.add_bar(x=df_agrupado.index, y=df_agrupado['Entrada'], name='Entradas', marker_color='#2563EB')
-                fig.add_bar(x=df_agrupado.index, y=df_agrupado['Saída'], name='Saídas', marker_color='#EF4444')
+                
+                # Arrays com os valores formatados em K
+                text_entradas = [formata_k(v) for v in df_agrupado['Entrada']]
+                text_saidas = [formata_k(v) for v in df_agrupado['Saída']]
+                
+                fig.add_bar(
+                    x=df_agrupado.index, y=df_agrupado['Entrada'], name='Entradas', 
+                    marker_color='#2563EB', text=text_entradas, textposition='outside'
+                )
+                fig.add_bar(
+                    x=df_agrupado.index, y=df_agrupado['Saída'], name='Saídas', 
+                    marker_color='#EF4444', text=text_saidas, textposition='outside'
+                )
                 
                 if metas_map:
                     fig.add_scatter(x=df_agrupado.index, y=[metas_map.get(m, {}).get('meta_entradas') for m in df_agrupado.index],
@@ -2937,7 +2959,21 @@ elif page == "Analytics Financeiro":
                                    name='Teto Saídas', mode='lines+markers', connectgaps=True, line=dict(color='#991B1B', dash='dot'))
                 
                 fig.update_xaxes(type='category')
-                fig.update_layout(barmode='group', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='#1E293B', legend_title_text='')
+                
+                # Teto extra (15%) no eixo Y para que os números não sejam cortados
+                max_y = max(df_agrupado['Entrada'].max(), df_agrupado['Saída'].max())
+                max_y = max_y * 1.15 if pd.notnull(max_y) and max_y > 0 else 1000
+                
+                fig.update_layout(
+                    barmode='group', 
+                    plot_bgcolor='rgba(0,0,0,0)', 
+                    paper_bgcolor='rgba(0,0,0,0)', 
+                    font_color='#1E293B', 
+                    legend_title_text='',
+                    yaxis=dict(range=[0, max_y]),
+                    uniformtext_minsize=10, 
+                    uniformtext_mode='hide'
+                )
                 st.plotly_chart(fig, use_container_width=True, key=f"chart_evo_{tab_key}")
                 
             st.markdown("---")
