@@ -3230,9 +3230,7 @@ elif page == "Gestão de Usuários":
     tab_lista, tab_novo = st.tabs(["📋 Usuários Cadastrados", "➕ Novo Usuário"])
 
     # ------------------------------------------
-    # ABA 1: NOVO USUÁRIO (Criação + Senha Inicial)
-    # ------------------------------------------
-    # ------------------------------------------
+   # ------------------------------------------
     # ABA 1: NOVO USUÁRIO (Criação + Senha Inicial)
     # ------------------------------------------
     with tab_novo:
@@ -3242,39 +3240,38 @@ elif page == "Gestão de Usuários":
         with st.form("form_novo_usuario", clear_on_submit=True):
             n_nome = st.text_input("Nome Completo")
             n_email = st.text_input("E-mail válido (Será usado para login)")
+            n_telefone = st.text_input("Telefone / WhatsApp") # <--- CAMPO NOVO AQUI
             n_perfil = st.selectbox("Perfil de Acesso", ["Visão Total Tesouraria", "Visão Conselho", "Visão Eventos", "Admin", "Sem Acesso"])
             n_senha = st.text_input("Senha Inicial (Mínimo 6 caracteres)", value="Igreja@123", type="password")
             
             if st.form_submit_button("💾 Criar Usuário", type="primary"):
-                if not n_nome or not n_email or len(n_senha) < 6:
-                    st.warning("⚠️ Preencha todos os campos corretamente e use uma senha de pelo menos 6 caracteres.")
+                # Adicionamos o telefone na validação
+                if not n_nome or not n_email or not n_telefone or len(n_senha) < 6:
+                    st.warning("⚠️ Preencha todos os campos corretamente (incluindo o telefone) e use uma senha de pelo menos 6 caracteres.")
                 else:
                     with st.spinner("Criando conta e salvando perfil..."):
-                        # Guarda a sessão atual do Admin
                         admin_session = st.session_state.get("session")
                         
                         try:
-                            # 1. Cria a conta no Auth do Supabase
                             supabase.auth.sign_up({"email": n_email, "password": n_senha})
-                        except Exception as e:
-                            pass # Se já existir no Auth, engolimos o erro para seguir e gravar a tabela
+                        except Exception:
+                            pass 
                             
-                        # Restaura a sessão do Admin (evita que você perca o seu acesso após criar um usuário)
                         if admin_session:
                             try:
                                 supabase.auth.set_session(admin_session.access_token, admin_session.refresh_token)
                             except:
                                 pass
                         
-                        # 2. Salva o Perfil na tabela pública
+                        # Adicionamos o telefone no envio para o banco
                         payload_novo = {
                             "nome": n_nome,
                             "email": n_email,
+                            "telefone": n_telefone, # <--- CAMPO NOVO AQUI
                             "perfil": n_perfil
                         }
                         
                         try:
-                            # Usamos comando direto e não o sb_request para capturar erros detalhados
                             supabase.table("usuarios").insert(payload_novo).execute()
                             
                             st.success("✅ Usuário criado com sucesso!")
@@ -3283,7 +3280,6 @@ elif page == "Gestão de Usuários":
                             st.rerun()
                         except Exception as e:
                             st.error(f"❌ Erro ao salvar na tabela de usuários. (Detalhe: {e})")
-                            st.info("💡 Dica: Pode ser que esse e-mail já esteja travado na aba 'Authentication' do Supabase. Vá até lá, apague manualmente o e-mail, e tente criar de novo!")
 
     # ------------------------------------------
     # ABA 2: LISTA, EDIÇÃO E EXCLUSÃO
