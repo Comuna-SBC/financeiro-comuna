@@ -2656,7 +2656,16 @@ elif page == "Inscrições e Comprovantes":
                             for p in sorted(pgs_insc, key=lambda x: x.get("numero_parcela", 1)):
                                 c_p1, c_p2 = st.columns([4, 1])
                                 dt = pd.to_datetime(p['data_pagamento']).strftime('%d/%m/%Y') if p.get('data_pagamento') else "—"
-                                c_p1.write(f"- Parcela {p.get('numero_parcela',1)} ({dt}): **{fmt_moeda(p.get('valor'))}** [{p.get('status')}]")
+                                
+                                # Verifica se existe comprovante para criar o link com ícone
+                                link_comp_str = ""
+                                if p.get("comprovante_url"):
+                                    url_arquivo = obter_link_arquivo(p.get("comprovante_url")) if 'obter_link_arquivo' in globals() else p.get("comprovante_url")
+                                    if url_arquivo:
+                                        link_comp_str = f" &nbsp;•&nbsp; [📎 **Ver Comprovante**]({url_arquivo})"
+                                
+                                # Usa markdown em vez de write para o link funcionar corretamente
+                                c_p1.markdown(f"- Parcela {p.get('numero_parcela',1)} ({dt}): **{fmt_moeda(p.get('valor'))}** [{p.get('status')}]{link_comp_str}")
                                 
                                 if c_p2.button("🗑️", key=f"del_pg_{p['id']}", help="Excluir este pagamento"):
                                     sb_request("inscricao_pagamentos", "DELETE", filtros={"id": f"eq.{p['id']}"})
