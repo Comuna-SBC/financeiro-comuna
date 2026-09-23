@@ -3146,7 +3146,7 @@ elif page == "Gestão de Usuários":
             with st.form("form_usuario", clear_on_submit=True):
                 n_nome = st.text_input("Nome Completo *")
                 n_email = st.text_input("Email *")
-                n_senha = st.text_input("Senha Temporária *", type="password", help="Senha para o primeiro acesso do usuário.")
+                n_senha = st.text_input("Senha Temporária *", type="password", help="Mínimo de 6 caracteres obrigatório.")
                 n_tel = st.text_input("Telefone (WhatsApp) *")
                 n_cpf = st.text_input("CPF (Opcional)")
                 n_perfil = st.selectbox("Perfil de Acesso *", ["Visão Total Tesouraria", "Visão Conselho", "Visão Eventos"])
@@ -3154,27 +3154,40 @@ elif page == "Gestão de Usuários":
                 if st.form_submit_button("Cadastrar Usuário", use_container_width=True, type="primary"):
                     if not n_nome or not n_email or not n_tel or not n_senha:
                         st.warning("⚠️ Nome, Email, Senha e Telefone são obrigatórios.")
+                    elif len(n_senha) < 6:
+                        st.warning("⚠️ A senha deve ter no mínimo 6 caracteres para ser aceita pelo sistema.")
                     else:
                         try:
-                            # 1. Cria usuário no Auth do Supabase (Apenas e-mail e senha)
-                            supabase.auth.sign_up({
+                            # 1. Cria conexão ADMIN (100% segura, rodando apenas no servidor)
+                            from supabase import create_client
+                            admin_sb = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_SERVICE_ROLE_KEY"])
+                            
+                            # 2. Usa a rota de Administração (Cria o usuário sem logar e sem conflito de sessão)
+                            admin_sb.auth.admin.create_user({
                                 "email": n_email,
-                                "password": n_senha
+                                "password": n_senha,
+                                "email_confirm": True  # O usuário não precisa confirmar e-mail!
                             })
                             
-                            # 2. Registra dados do perfil na tabela 'usuarios'
+                            # 3. Registra dados do perfil na tabela 'usuarios'
                             payload = {
                                 "nome": n_nome, "email": n_email, "telefone": n_tel, 
                                 "cpf": n_cpf if n_cpf else None, "perfil": n_perfil, "status": "Ativo"
                             }
                             res = sb_request("usuarios", "POST", [payload])
+                            
                             if res is not None:
                                 st.cache_data.clear()
-                                st.success("Usuário criado no sistema com sucesso!")
+                                st.success(f"✅ Usuário {n_nome} criado com sucesso e e-mail já confirmado!")
                                 time.sleep(1.5)
                                 st.rerun()
+                                
                         except Exception as e:
-                            st.error(f"Erro ao criar usuário no Auth: {e}")
+                            erro_str = str(e)
+                            if "already registered" in erro_str.lower() or "already exists" in erro_str.lower():
+                                st.error("❌ Este e-mail já possui uma conta no sistema.")
+                            else:
+                                st.error(f"❌ Erro ao criar usuário: {erro_str}")
 
     with col_edit:
         with st.expander("✏️ Editar ou Excluir Usuário (Tabela)"):
