@@ -3175,7 +3175,7 @@ elif page == "Gestão de Usuários":
                 n_senha = st.text_input("Senha Temporária *", type="password", help="Mínimo de 6 caracteres obrigatório.")
                 n_tel = st.text_input("Telefone (WhatsApp) *")
                 n_cpf = st.text_input("CPF (Opcional)")
-                n_perfil = st.selectbox("Perfil de Acesso *", ["Visão Total Tesouraria", "Visão Conselho", "Visão Eventos"])
+                n_perfil = st.selectbox("Perfil de Acesso *", ["Visão Total Tesouraria", "Visão Conselho", "Visão Eventos, Admin"])
                 
                 if st.form_submit_button("Cadastrar Usuário", use_container_width=True, type="primary"):
                     if not n_nome or not n_email or not n_tel or not n_senha:
