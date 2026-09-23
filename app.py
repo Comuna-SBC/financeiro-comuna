@@ -115,6 +115,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+def hoje_sp():
+    """Retorna a data atual cravada no fuso horário do Brasil (SP)"""
+    return pd.Timestamp.now('America/Sao_Paulo').date()
 
 def verificar_e_gerar_recorrencias(df_lancamentos_atuais):
     if st.session_state.get("motor_recorrencia_rodou"):
