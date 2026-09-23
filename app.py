@@ -2315,6 +2315,7 @@ elif page == "Conciliação Bancária":
                         st.markdown("<hr style='margin:2px 0;border-color:#F1F5F9;'>", unsafe_allow_html=True)
 # ==========================================
 # ==========================================
+# ==========================================
 # PAINEL DE EVENTOS
 # ==========================================
 elif page == "Painel de Eventos":
@@ -2380,10 +2381,8 @@ elif page == "Painel de Eventos":
                     if pd.isna(raw_data_ev) or not raw_data_ev:
                         default_date = hoje_sp()
                     else:
-                        try:
-                            default_date = pd.to_datetime(raw_data_ev).date()
-                        except Exception:
-                            default_date = hoje_sp()
+                        try: default_date = pd.to_datetime(raw_data_ev).date()
+                        except: default_date = hoje_sp()
 
                     n_data_ev = st.date_input("Data", default_date)
                     n_valor_ev = st.number_input("Valor (R$)", value=float(ev_data.get('valor_inscricao') or 0), format="%.2f")
@@ -2422,24 +2421,19 @@ elif page == "Painel de Eventos":
             status_evento = ev.get("status") or "Aberto"
             cor_status = "#059669" if status_evento == "Aberto" else "#94A3B8"
             
-            # Formatação dos centavos para aparecer no cartão
             codigo_centavos = ev.get("codigo_centavos")
             texto_centavos_card = f" &nbsp;•&nbsp; 🪙 Centavos para Pix: <b>,{codigo_centavos}</b>" if codigo_centavos else ""
             
-            # Montagem das URLs padrão
-            app_url = st.secrets.get("APP_URL", "").rstrip("/")
+            app_url = st.secrets.get("APP_URL", "https://financeiro-comuna-sbc.streamlit.app").rstrip("/")
             if "[" in app_url and "](" in app_url:
                 import re
                 match = re.search(r'\((https?://[^)]+)\)', app_url)
                 app_url = match.group(1) if match else "https://financeiro-comuna-sbc.streamlit.app"
-            elif not app_url:
-                app_url = "https://financeiro-comuna-sbc.streamlit.app"
                 
-            complemento_link = f"?pagina=inscricao&evento={ev['id']}"
-            link_publico = f"{app_url}/{complemento_link}"
+            link_publico = f"{app_url}/?pagina=inscricao&evento={ev['id']}"
 
             if tem_part:
-                inscricoes_evento = [i for i in inscricoes_all if str(i.get("evento_id")) == str(ev.get("id"))]
+                inscricoes_evento = [i for i in inscricoes_all if str(i.get("evento_id")) == str(ev.get("id")) and i.get("status_pagamento") != "Desistente"]
                 ids_inscricoes_evento = {str(i.get("id")) for i in inscricoes_evento}
                 pagamentos_evento = [p for p in pagamentos_all if str(p.get("inscricao_id")) in ids_inscricoes_evento]
                 pagamentos_pendentes = [p for p in pagamentos_evento if p.get("status") == "Pendente"]
@@ -2457,15 +2451,13 @@ elif page == "Painel de Eventos":
                 info_participantes = f"👥 {total_inscritos} inscritos &nbsp;•&nbsp; {vagas_restantes} vagas restantes &nbsp;•&nbsp; ✅ {len(inscricoes_quitadas)} quitados &nbsp;•&nbsp; 🟡 {len(inscricoes_parciais)} parciais"
                 info_alertas = f'<p style="color:#D97706;margin:4px 0;font-weight:600;">⏳ {len(pagamentos_pendentes)} comprovantes aguardando aprovação</p>' if pagamentos_pendentes else ''
 
-                # Geração do texto WhatsApp principal para Evento
                 texto_whatsapp = f"Olá! As inscrições para o *{ev.get('nome')}* estão abertas!\n\n*Data:* {ev.get('data_evento') or '—'}\n*Valor:* {fmt_moeda(ev.get('valor_inscricao'))} ({parcelamento_texto})\n\n*Faça sua inscrição pelo link:*\n{link_publico}"
-                
                 if codigo_centavos:
-                    texto_whatsapp += f"\n\n*Atenção:* Ao fazer o pagamento via Pix, adicione {codigo_centavos} no valor final. Exemplo: R$ {int(ev.get('valor_inscricao') or 0)},{codigo_centavos}. Isso garante a confirmação automática no sistema!"
+                    texto_whatsapp += f"\n\n*Atenção:* Ao fazer o pagamento via Pix, adicione {codigo_centavos} no valor final. Exemplo: R$ {int(ev.get('valor_inscricao') or 0)},{codigo_centavos}. Isso garante a confirmação automática!"
 
             else:
                 creditos_ev = sb_request("creditos_ofx", "GET", filtros={"evento_id": f"eq.{ev['id']}"}) or []
-                total_arrecadado = sum(float(c.get("valor") or 0) for c in creditos_ev if c.get("status") == "Vinculado")
+                total_arrecadado = sum(float(c.get("valor") or 0) for c in creditos_ev)
                 meta_alvo = float(ev.get('valor_inscricao') or 0)
                 saldo_a_receber = max(meta_alvo - total_arrecadado, 0)
                 
@@ -2473,19 +2465,13 @@ elif page == "Painel de Eventos":
                 info_alertas = ""
                 parcelamento_texto = "Doação Espontânea"
 
-                # Geração do texto WhatsApp principal para Campanha
                 texto_whatsapp = f"Olá! Nossa campanha *{ev.get('nome')}* está ativa!\n\nNossa meta é arrecadar *{fmt_moeda(ev.get('valor_inscricao'))}* e toda ajuda faz muita diferença!"
-                
                 if codigo_centavos:
-                    texto_whatsapp += f"\n\n*Importante:* Adicione o código {codigo_centavos} no final do valor da sua doação. Exemplo: para doar R$ 50 transfira R$ 50,{codigo_centavos}. Isso nos ajuda a identificar sua doação de forma rápida e automática!"
+                    texto_whatsapp += f"\n\n*Importante:* Adicione o código {codigo_centavos} no final da doação (ex: R$ 50,{codigo_centavos}) para identificação automática."
 
-            # Chamada de ação que conecta a primeira mensagem com a segunda (a chave pix isolada)
-            texto_whatsapp += "\n\nUse o código PIX abaixo para fazer sua transferência:"
-
-            # Extração da Chave Pix Pura
+            texto_whatsapp += "\n\nUse a chave PIX abaixo para transferir:"
             chave_pix_pura = ev.get('chave_pix') or '—'
 
-            # O HTML foi envelopado sem quebras de linha com indentação
             card_html = (
                 f'<div style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:14px;padding:20px;margin-bottom:12px;">'
                 f'<h4 style="margin-top:0;">{ev.get("nome", "Evento")} <span style="font-size:0.8rem;color:{cor_status};">● {status_evento}</span></h4>'
@@ -2499,7 +2485,6 @@ elif page == "Painel de Eventos":
             st.markdown(card_html, unsafe_allow_html=True)
 
             col_esq, col_meio, col_dir = st.columns([2.2, 1, 1.2])
-            
             with col_esq:
                 if tem_part:
                     st.caption("Link de inscrição (Passe o mouse e copie 📋)")
@@ -2510,39 +2495,30 @@ elif page == "Painel de Eventos":
             with col_meio:
                 with st.popover("📱 Divulgar no WhatsApp", use_container_width=True):
                     import urllib.parse
-                    st.caption("O WhatsApp não permite enviar duas mensagens separadas com um único clique. Siga os 2 passos abaixo:")
-                    
                     st.markdown("**Passo 1: Enviar Instruções**")
-                    st.code(texto_whatsapp, language="text")
                     link_wa_texto = f"https://wa.me/?text={urllib.parse.quote(texto_whatsapp)}"
                     st.link_button("💬 Enviar Instruções", link_wa_texto, use_container_width=True)
-                    
                     st.markdown("---")
-                    
-                    st.markdown("**Passo 2: Enviar APENAS a Chave Pix** (para a pessoa conseguir copiar no celular)")
-                    st.code(chave_pix_pura, language="text")
+                    st.markdown("**Passo 2: Enviar APENAS a Chave Pix**")
                     link_wa_pix = f"https://wa.me/?text={urllib.parse.quote(chave_pix_pura)}"
-                    st.link_button("🔑 Enviar só a Chave Pix", link_wa_pix, use_container_width=True)
+                    st.link_button("🔑 Enviar Chave Pix", link_wa_pix, use_container_width=True)
                     
             with col_dir:
                 novo_status = "Encerrado" if status_evento == "Aberto" else "Aberto"
                 texto_botao = "🔒 Encerrar " + ("inscrições" if tem_part else "campanha")
-                if status_evento != "Aberto":
-                    texto_botao = "🔓 Reabrir " + ("inscrições" if tem_part else "campanha")
+                if status_evento != "Aberto": texto_botao = "🔓 Reabrir " + ("inscrições" if tem_part else "campanha")
+                
                 if st.button(texto_botao, key=f"alterar_status_ev_{ev['id']}", use_container_width=True):
-                    resultado = sb_request("eventos", "PATCH", {"status": novo_status}, filtros={"id": f"eq.{ev['id']}"})
-                    if resultado is not None:
-                        st.cache_data.clear()
-                        st.rerun()
-                        
+                    sb_request("eventos", "PATCH", {"status": novo_status}, filtros={"id": f"eq.{ev['id']}"})
+                    st.cache_data.clear(); st.rerun()
             st.markdown("---")
+
 # ==========================================
-# ==========================================
-# INSCRIÇÕES E COMPROVANTES
+# INSCRIÇÕES E COMPROVANTES (OPÇÃO 1 - SALDO GLOBAL)
 # ==========================================
 elif page == "Inscrições e Comprovantes":
-    st.title("Validação e Bolsão OFX")
-    st.markdown("Valide comprovantes de Pix ou distribua os depósitos bancários identificados por centavos.")
+    st.title("Gestão e Conciliação")
+    st.markdown("Aprove comprovantes rapidamente e audite os depósitos globais identificados pelo Tesoureiro.")
 
     if not eventos_db:
         st.info("Cadastre um evento ou campanha primeiro no 'Painel de Eventos'.")
@@ -2562,310 +2538,199 @@ elif page == "Inscrições e Comprovantes":
         evento_obj_sel = next(e for e in eventos_visiveis if str(e['id']) == str(evento_id_sel))
         ev_tem_participantes = evento_obj_sel.get('tem_participantes', True)
 
-        inscricoes_evento = [i for i in carregar("inscricoes") if str(i.get('evento_id')) == str(evento_id_sel)]
+        inscricoes_evento_todas = [i for i in carregar("inscricoes") if str(i.get('evento_id')) == str(evento_id_sel)]
         pagamentos_all = carregar("inscricao_pagamentos")
         creditos_ofx_all = sb_request("creditos_ofx", "GET", filtros={"evento_id": f"eq.{evento_id_sel}"}) or []
-        
-        map_insc = {i["id"]: i for i in inscricoes_evento}
 
-        tab_bolsao, tab_comprovantes, tab_lista = st.tabs(["💵 Bolsão de Créditos OFX", "⏳ Comprovantes Web", "👥 Participantes/Lista"])
+        tab_comprovantes, tab_lista, tab_auditoria = st.tabs(["⏳ Comprovantes (Web)", "👥 Lista de Participantes", "⚖️ Auditoria & Bolsão OFX"])
 
-        with tab_bolsao:
-            st.markdown("### Créditos do Extrato Bancário Aguardando Vínculo")
-            
-            if ev_tem_participantes:
-                st.markdown("Estes valores entraram na conta com o código de centavos. Você pode vincular o valor total a um participante, ou uma parte dele (o sistema separará o troco automaticamente para o bolsão).")
-            else:
-                st.markdown("Estes valores entraram via código de centavos da Campanha. Vincule-os para creditá-los ao saldo deste projeto.")
-
-            creditos_disponiveis = [c for c in creditos_ofx_all if c.get("status") == "Disponível"]
-            
-            if not creditos_disponiveis:
-                st.success("Nenhum crédito bancário pendente de distribuição para este evento. 👍")
-            else:
-                for cred in creditos_disponiveis:
-                    c_b1, c_b2, c_b3 = st.columns([2, 2, 2])
-                    c_b1.write(f"📅 **{pd.to_datetime(cred['data']).strftime('%d/%m/%Y')}** — {fmt_moeda(cred['valor'])}")
-                    c_b2.caption(f"Banco: {cred['descricao_bancaria']}")
-                    
-                    with c_b3:
-                        if ev_tem_participantes:
-                            with st.popover("🔗 Vincular a Participante"):
-                                if not inscricoes_evento:
-                                    st.warning("Nenhum participante inscrito. Cadastre na aba 'Participantes'.")
-                                else:
-                                    participante_opcoes = {i['nome_participante']: i['id'] for i in inscricoes_evento}
-                                    part_sel = st.selectbox("Escolha o Participante", list(participante_opcoes.keys()), key=f"sel_part_{cred['id']}")
-                                    
-                                    insc_id = participante_opcoes[part_sel]
-                                    insc_obj = map_insc[insc_id]
-                                    
-                                    saldo_devedor = max(float(insc_obj.get('valor_total') or 0) - float(insc_obj.get('valor_pago') or 0), 0.0)
-                                    sugestao_vinculo = min(float(cred['valor']), saldo_devedor) if saldo_devedor > 0 else float(cred['valor'])
-                                    
-                                    valor_a_vincular = st.number_input(
-                                        "Valor a vincular (R$)", 
-                                        min_value=0.01, 
-                                        max_value=float(cred['valor']), 
-                                        value=float(sugestao_vinculo), 
-                                        format="%.2f", 
-                                        key=f"val_vinc_{cred['id']}"
-                                    )
-                                    
-                                    if st.button("Confirmar Vínculo", key=f"btn_vinc_cred_{cred['id']}", type="primary"):
-                                        if saldo_devedor <= 0.0:
-                                            st.error(f"Atenção: A inscrição de {part_sel} já está 100% quitada.")
-                                        elif valor_a_vincular > (saldo_devedor + 0.02):
-                                            st.error(f"O limite para este participante é {fmt_moeda(saldo_devedor)} (saldo que falta para quitar). Reduza o valor.")
-                                        else:
-                                            valor_restante = round(float(cred['valor']) - valor_a_vincular, 2)
-                                            
-                                            if valor_restante > 0.0:
-                                                sb_request("creditos_ofx", "PATCH", {"valor": valor_a_vincular, "status": "Vinculado", "inscricao_id": insc_id}, filtros={"id": f"eq.{cred['id']}"})
-                                                sb_request("creditos_ofx", "POST", {
-                                                    "evento_id": cred['evento_id'],
-                                                    "lancamento_id": cred.get('lancamento_id'),
-                                                    "data": cred['data'],
-                                                    "valor": valor_restante,
-                                                    "descricao_bancaria": cred['descricao_bancaria'] + " (Saldo Restante)",
-                                                    "status": "Disponível"
-                                                })
-                                            else:
-                                                sb_request("creditos_ofx", "PATCH", {"status": "Vinculado", "inscricao_id": insc_id}, filtros={"id": f"eq.{cred['id']}"})
-                                            
-                                            novo_pag = sb_request("inscricao_pagamentos", "POST", {
-                                                "inscricao_id": insc_id,
-                                                "numero_parcela": len([p for p in pagamentos_all if p.get("inscricao_id") == insc_id]) + 1,
-                                                "valor": valor_a_vincular,
-                                                "comprovante_url": None,
-                                                "status": "Aprovado",
-                                                "lancamento_id": cred.get('lancamento_id')
-                                            })
-                                            
-                                            novo_valor_pago = float(insc_obj.get('valor_pago') or 0) + valor_a_vincular
-                                            novo_status_p = "Completo" if novo_valor_pago >= float(insc_obj.get('valor_total') or 0) - 0.01 else "Parcial"
-                                            sb_request("inscricoes", "PATCH", {"valor_pago": novo_valor_pago, "status_pagamento": novo_status_p}, filtros={"id": f"eq.{insc_id}"})
-                                            
-                                            st.cache_data.clear()
-                                            st.success("Crédito vinculado com sucesso!")
-                                            time.sleep(1)
-                                            st.rerun()
-                        else:
-                            with st.popover("🔗 Vincular à Campanha"):
-                                desc_campanha = st.text_input("Descrição / Observação (Ex: Doação do Irmão X)", key=f"desc_camp_{cred['id']}")
-                                if st.button("Confirmar Associação à Campanha", key=f"btn_vinc_camp_{cred['id']}", type="primary"):
-                                    sb_request("creditos_ofx", "PATCH", {"status": "Vinculado"}, filtros={"id": f"eq.{cred['id']}"})
-                                    if cred.get('lancamento_id'):
-                                        nome_cc = evento_obj_sel.get('centro_custo') or evento_sel
-                                        novo_desc = f"{nome_cc} - {desc_campanha}" if desc_campanha else f"Arrecadação - {nome_cc}"
-                                        sb_request("lancamentos", "PATCH", {"centro_custo": nome_cc, "descricao": novo_desc}, filtros={"id": f"eq.{cred['lancamento_id']}"})
-                                    
-                                    st.cache_data.clear()
-                                    st.success("Crédito vinculado à campanha com sucesso!")
-                                    time.sleep(1)
-                                    st.rerun()
-
-                    st.markdown("<hr style='margin:4px 0;border-color:#E2E8F0;'>", unsafe_allow_html=True)
-
-            st.markdown("---")
-            with st.expander("❓ Pagaram sem os centavos e não caiu aqui?"):
-                st.info("Se alguém pagou e não colocou o código de centavos, preencha os dados abaixo. A Tesouraria será notificada no 'Resumo do Dia' para conferir o extrato e liberar o valor para o Bolsão.")
-                with st.form("form_solicitar_credito"):
-                    c_s1, c_s2 = st.columns(2)
-                    s_nome = c_s1.text_input("Nome de quem pagou")
-                    s_valor = c_s2.number_input("Valor exato pago (R$)", min_value=0.01, format="%.2f")
-                    
-                    c_s3, c_s4 = st.columns(2)
-                    s_data = c_s3.date_input("Data em que foi feito o pagamento")
-                    s_obs = c_s4.text_input("Observações (Opcional)")
-                    
-                    if st.form_submit_button("Enviar Solicitação para Tesouraria", type="primary"):
-                        if not s_nome:
-                            st.warning("Informe o nome do pagador.")
-                        else:
-                            sb_request("creditos_ofx", "POST", {
-                                "evento_id": evento_id_sel,
-                                "data": str(s_data),
-                                "valor": float(s_valor),
-                                "descricao_bancaria": f"Solicitação Manual: {s_nome} - {s_obs}",
-                                "status": "Pendente Aprovação"
-                            })
-                            st.cache_data.clear()
-                            st.success("Solicitação enviada ao Resumo do Dia! Assim que a Tesouraria aprovar, o crédito ficará disponível acima.")
-
+        # -------------------------------------------------------------
+        # ABA 1: COMPROVANTES (APROVAÇÃO SIMPLIFICADA)
+        # -------------------------------------------------------------
         with tab_comprovantes:
             st.markdown("### Comprovantes Aguardando Aprovação")
+            st.info("Aprovar um comprovante aqui confirma o pagamento na ficha da pessoa. O dinheiro real na conta bancária será conciliado automaticamente via saldo na aba de Auditoria.")
             
-            evs_list = carregar("eventos") or []
-            ev_obj = None
-            
-            # Tenta pegar do contexto da página atual de forma segura
-            if 'evento_obj_sel' in locals() and isinstance(locals()['evento_obj_sel'], dict):
-                ev_obj = locals()['evento_obj_sel']
-            elif 'evento_id_sel' in locals():
-                ev_obj = next((e for e in evs_list if str(e.get("id")) == str(locals()['evento_id_sel'])), None)
-            
-            # Se não achou pelo escopo, tenta pelo seletor de nome da página
-            if not ev_obj and 'evento_sel' in locals() and isinstance(locals()['evento_sel'], str):
-                ev_obj = next((e for e in evs_list if e.get("nome") == locals()['evento_sel']), None)
-                
-            # Fallback seguro para o primeiro evento caso não localize
-            if not ev_obj and evs_list:
-                ev_obj = evs_list[0]
-
-            if not ev_obj or not isinstance(ev_obj, dict):
-                st.warning("Nenhum evento válido carregado.")
+            if not ev_tem_participantes:
+                st.warning("Eventos tipo Campanha não possuem participantes ou envio de comprovantes individuais.")
             else:
-                inscricoes_evento = [i for i in carregar("inscricoes") if str(i.get("evento_id")) == str(ev_obj.get("id"))]
-                
-                raw_pags = carregar("inscricao_pagamentos") or []
-                pagamentos_pendentes = [p for p in raw_pags if p.get("status") == "Pendente"]
-                
-                contas_db = carregar("contas_bancarias") or []
-                nomes_contas = [c["nome"] for c in contas_db]
-                categorias_db = carregar("categorias") or []
-                
-                pendentes_evento = [
-                    p for p in pagamentos_pendentes 
-                    if any(str(i["id"]) == str(p.get("inscricao_id")) for i in inscricoes_evento)
+                pagamentos_pendentes = [
+                    p for p in pagamentos_all 
+                    if p.get("status") == "Pendente" and any(str(i["id"]) == str(p.get("inscricao_id")) for i in inscricoes_evento_todas)
                 ]
                 
-                if not pendentes_evento:
-                    st.info("✅ Nenhum comprovante pendente para este evento.")
+                if not pagamentos_pendentes:
+                    st.success("✅ Nenhum comprovante pendente para este evento.")
                 else:
-                    for p in pendentes_evento:
-                        insc = next((i for i in inscricoes_evento if str(i["id"]) == str(p.get("inscricao_id"))), None)
+                    for p in pagamentos_pendentes:
+                        insc = next((i for i in inscricoes_evento_todas if str(i["id"]) == str(p.get("inscricao_id"))), None)
                         if not insc: continue
                         
-                        st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
-                        
-                        c_info, c_conta, c_botoes = st.columns([3, 2, 2])
-                        
-                        with c_info:
-                            st.markdown(f"**👤 {insc.get('nome_participante', 'Participante')}** (Parcela {p.get('numero_parcela', 1)})")
-                            data_str = pd.to_datetime(p['data_pagamento']).strftime('%d/%m/%Y') if p.get('data_pagamento') else 'Não informada'
-                            st.write(f"💰 **Valor:** {fmt_moeda(p.get('valor'))} &nbsp;|&nbsp; 📅 **Data:** {data_str}")
-                            if p.get("comprovante_url"):
-                                link_comp = obter_link_arquivo(p.get("comprovante_url")) if 'obter_link_arquivo' in globals() else p.get("comprovante_url")
-                                st.markdown(f"📎 [**Ver Comprovante Anexado**]({link_comp if link_comp else '#'})")
-                                
-                        with c_conta:
-                            conta_selecionada = st.selectbox(
-                                "🏦 Conta de Entrada:", 
-                                nomes_contas, 
-                                index=None, 
-                                key=f"conta_dest_{p['id']}",
-                                placeholder="Selecione a conta..."
-                            )
+                        with st.container(border=True):
+                            c_info, c_botoes = st.columns([3, 1])
+                            with c_info:
+                                st.markdown(f"**👤 {insc.get('nome_participante')}** (Parcela {p.get('numero_parcela', 1)})")
+                                data_str = pd.to_datetime(p['data_pagamento']).strftime('%d/%m/%Y') if p.get('data_pagamento') else 'Não informada'
+                                st.write(f"💰 **Valor:** {fmt_moeda(p.get('valor'))} &nbsp;|&nbsp; 📅 **Data:** {data_str}")
+                                if p.get("comprovante_url"):
+                                    link_comp = obter_link_arquivo(p.get("comprovante_url")) if 'obter_link_arquivo' in globals() else p.get("comprovante_url")
+                                    st.markdown(f"📎 [**Ver Comprovante Anexado**]({link_comp if link_comp else '#'})")
                             
-                        with c_botoes:
-                            st.write("")
-                            col_a, col_r = st.columns(2)
-                            
-                            # BOTÃO APROVAR
-                            if col_a.button("✅ Aprovar", key=f"aprovar_pg_{p['id']}", use_container_width=True, help="Aprovar e lançar no caixa"):
-                                if not conta_selecionada:
-                                    st.error("⚠️ Selecione a conta bancária antes de aprovar!")
-                                else:
-                                    conta_id = next(c["id"] for c in contas_db if c["nome"] == conta_selecionada)
-                                    cat_evento_id = next((c['id'] for c in categorias_db if c.get('nome', '').strip().lower() == 'inscrições de eventos'), None)
-                                    data_pg_aprovada = p.get('data_pagamento') or str(hoje_sp())
+                            with c_botoes:
+                                if st.button("✅ Aprovar", key=f"aprovar_{p['id']}", type="primary", use_container_width=True):
+                                    # Aprovação simplificada: atualiza apenas o pagamento e a inscrição, NÃO duplica lançamentos bancários
+                                    sb_request("inscricao_pagamentos", "PATCH", {"status": "Aprovado"}, filtros={"id": f"eq.{p['id']}"})
+                                    novo_valor_pago = float(insc.get('valor_pago') or 0) + float(p.get('valor') or 0)
+                                    novo_status = "Completo" if novo_valor_pago >= float(insc.get('valor_total') or 0) - 0.01 else "Parcial"
+                                    sb_request("inscricoes", "PATCH", {"valor_pago": novo_valor_pago, "status_pagamento": novo_status}, filtros={"id": f"eq.{insc['id']}"})
+                                    st.cache_data.clear(); st.rerun()
                                     
-                                    novo_lanc = sb_request("lancamentos", "POST", [{
-                                        "descricao": f"Inscrição ({insc.get('nome_participante')} - parcela {p.get('numero_parcela',1)}) - {ev_obj.get('nome')}",
-                                        "tipo": "Entrada", "valor": float(p.get('valor') or 0),
-                                        "data_competencia": data_pg_aprovada, 
-                                        "data_pagamento": data_pg_aprovada,
-                                        "status": "Concluído",
-                                        "categoria_id": cat_evento_id, 
-                                        "centro_custo": ev_obj.get("nome"),
-                                        "conta_bancaria_id": conta_id
-                                    }])
-                                    
-                                    if novo_lanc is not None:
-                                        lanc_id = novo_lanc[0]['id'] if isinstance(novo_lanc, list) and len(novo_lanc)>0 else None
-                                        sb_request("inscricao_pagamentos", "PATCH", {"status": "Aprovado", "lancamento_id": lanc_id}, filtros={"id": f"eq.{p['id']}"})
-                                        novo_valor_pago = float(insc.get('valor_pago') or 0) + float(p.get('valor') or 0)
-                                        novo_status = "Completo" if novo_valor_pago >= float(insc.get('valor_total') or 0) - 0.01 else "Parcial"
-                                        sb_request("inscricoes", "PATCH", {"valor_pago": novo_valor_pago, "status_pagamento": novo_status}, filtros={"id": f"eq.{insc['id']}"})
-                                        
-                                        st.cache_data.clear()
-                                        st.rerun()
+                                if st.button("❌ Rejeitar", key=f"rejeitar_{p['id']}", use_container_width=True):
+                                    sb_request("inscricao_pagamentos", "PATCH", {"status": "Rejeitado"}, filtros={"id": f"eq.{p['id']}"})
+                                    st.cache_data.clear(); st.rerun()
 
-                            # BOTÃO REJEITAR
-                            if col_r.button("❌ Rejeitar", key=f"rejeitar_pg_{p['id']}", use_container_width=True):
-                                sb_request("inscricao_pagamentos", "PATCH", {"status": "Rejeitado"}, filtros={"id": f"eq.{p['id']}"})
-                                st.cache_data.clear()
-                                st.rerun()
+        # -------------------------------------------------------------
+        # ABA 2: LISTA DE PARTICIPANTES (UX CLEAN + EXPANDER)
+        # -------------------------------------------------------------
         with tab_lista:
             if not ev_tem_participantes:
-                st.info("💡 Este projeto é do tipo Campanha/Arrecadação e não possui lista nominal de participantes. Acompanhe os totais diretamente na aba Visão Consolidada ou no Analytics.")
+                st.info("💡 Este projeto é do tipo Campanha/Arrecadação e não possui lista nominal.")
             else:
-                st.markdown("### Participantes Inscritos")
+                col_title, col_add = st.columns([3, 1])
+                col_title.markdown("### Gestão de Participantes")
                 
-                with st.expander("➕ Cadastrar Participante Manualmente"):
-                    with st.form("form_cad_participante"):
+                with col_add.popover("➕ Nova Inscrição"):
+                    with st.form("form_cad_manual"):
                         p_nome = st.text_input("Nome Completo")
-                        p_tel = st.text_input("Telefone / WhatsApp")
-                        p_cpf = st.text_input("CPF (Opcional)")
-                        p_valor = st.number_input("Valor da Inscrição (R$)", value=float(evento_obj_sel.get('valor_inscricao') or 0), format="%.2f")
-                        
-                        if st.form_submit_button("Cadastrar Inscrição", use_container_width=True):
-                            if not p_nome:
-                                st.warning("Informe o nome do participante.")
-                            else:
+                        p_tel = st.text_input("WhatsApp (com DDD)")
+                        p_valor = st.number_input("Valor (R$)", value=float(evento_obj_sel.get('valor_inscricao') or 0), format="%.2f")
+                        if st.form_submit_button("Cadastrar", use_container_width=True):
+                            if p_nome:
                                 sb_request("inscricoes", "POST", [{
-                                    "evento_id": evento_id_sel,
-                                    "nome_participante": p_nome,
-                                    "contato": p_tel,
-                                    "cpf": p_cpf if p_cpf else None,
-                                    "valor_total": float(p_valor),
-                                    "valor_pago": 0,
-                                    "status_pagamento": "Pendente"
+                                    "evento_id": evento_id_sel, "nome_participante": p_nome,
+                                    "contato": somente_digitos(p_tel), "valor_total": float(p_valor),
+                                    "valor_pago": 0, "status_pagamento": "Pendente"
                                 }])
-                                st.cache_data.clear(); st.success("Inscrição cadastrada!"); time.sleep(1); st.rerun()
+                                st.cache_data.clear(); st.rerun()
 
-                if not inscricoes_evento:
-                    st.info("Nenhuma inscrição cadastrada para este evento.")
-                else:
-                    # Mapeamento auxiliar para trazer a origem e as datas reais das parcelas
-                    todos_lancamentos = carregar("lancamentos") or []
-                    map_lancamentos = {str(l['id']): l for l in todos_lancamentos}
-                    map_cred_por_lanc = {str(c.get('lancamento_id')): c for c in creditos_ofx_all if c.get('lancamento_id')}
+                ativos = [i for i in inscricoes_evento_todas if i.get("status_pagamento") != "Desistente"]
+                desistentes = [i for i in inscricoes_evento_todas if i.get("status_pagamento") == "Desistente"]
+                
+                # Regra de Ordenação: Status (Pendente 0, Parcial 1, Completo 2) -> Nome A-Z
+                def sort_key(insc):
+                    st_pag = insc.get('status_pagamento', 'Pendente')
+                    ordem = 0 if st_pag == 'Pendente' else (1 if st_pag == 'Parcial' else 2)
+                    return (ordem, insc.get('nome_participante', '').lower())
+                
+                ativos.sort(key=sort_key)
 
-                    for insc in inscricoes_evento:
-                        pgs = [p for p in pagamentos_all if p.get("inscricao_id") == insc["id"]]
-                        emoji_status = {"Pendente": "⏳", "Parcial": "🟡", "Completo": "✅"}.get(insc.get("status_pagamento"), "⏳")
+                if not ativos:
+                    st.info("Nenhuma inscrição ativa no momento.")
+                
+                for insc in ativos:
+                    v_pago = float(insc.get('valor_pago') or 0)
+                    v_tot = float(insc.get('valor_total') or 0)
+                    falta = max(v_tot - v_pago, 0)
+                    st_pag = insc.get('status_pagamento', 'Pendente')
+                    tel_raw = insc.get('contato', '')
+                    tel_fmt = f"📱 {tel_raw}" if tel_raw else ""
+                    
+                    # Definição do Emoji e Título Limpo
+                    emoji = "🔴" if st_pag == "Pendente" else "🟡" if st_pag == "Parcial" else "🟢"
+                    header_label = f"{emoji} [{st_pag.upper()}] | {insc['nome_participante']} | {tel_fmt} | Pago: {fmt_moeda(v_pago)} | Falta: {fmt_moeda(falta)}"
+                    
+                    with st.expander(header_label):
+                        # Cobrança via WhatsApp
+                        if falta > 0 and tel_raw:
+                            import urllib.parse
+                            msg_cobranca = f"Olá {insc['nome_participante']}, tudo bem? Passando para lembrar que consta um valor pendente de {fmt_moeda(falta)} referente à sua inscrição no evento *{evento_sel}*. Qualquer dúvida, estou à disposição!"
+                            link_wa = f"https://wa.me/55{somente_digitos(tel_raw)}?text={urllib.parse.quote(msg_cobranca)}"
+                            st.markdown(f"👉 [**Mandar mensagem de cobrança no WhatsApp**]({link_wa})")
                         
-                        st.markdown(f"**{insc['nome_participante']}** ({insc.get('contato','—')}) — {emoji_status} {insc.get('status_pagamento','Pendente')} — Pago: {fmt_moeda(insc.get('valor_pago'))} / Total: {fmt_moeda(insc.get('valor_total'))}")
+                        st.markdown("**Histórico de Pagamentos:**")
+                        pgs_insc = [p for p in pagamentos_all if str(p.get("inscricao_id")) == str(insc["id"])]
                         
-                        for p in sorted(pgs, key=lambda x: x.get("numero_parcela", 1)):
-                            lanc_id = str(p.get('lancamento_id'))
-                            l_info = map_lancamentos.get(lanc_id, {})
-                            c_info = map_cred_por_lanc.get(lanc_id, {})
-                            
-                            # Tratamento da Data do Pagamento (Via banco ou lançamento direto)
-                            dt_pg = c_info.get('data') or l_info.get('data_competencia') or "N/I"
-                            if dt_pg != "N/I":
-                                try: dt_pg = pd.to_datetime(dt_pg).strftime('%d/%m/%Y')
-                                except: pass
-                            
-                            # Tratamento da Data de Associação (Quando o líder apertou o botão no sistema)
-                            dt_assoc = p.get('created_at', "N/I")
-                            if dt_assoc != "N/I":
-                                try:
-                                    dt_obj = pd.to_datetime(dt_assoc)
-                                    dt_assoc = dt_obj.strftime('%d/%m/%Y %H:%M')
-                                except: pass
+                        if not pgs_insc:
+                            st.caption("Nenhum pagamento registrado.")
+                        else:
+                            for p in sorted(pgs_insc, key=lambda x: x.get("numero_parcela", 1)):
+                                c_p1, c_p2 = st.columns([4, 1])
+                                dt = pd.to_datetime(p['data_pagamento']).strftime('%d/%m/%Y') if p.get('data_pagamento') else "—"
+                                c_p1.write(f"- Parcela {p.get('numero_parcela',1)} ({dt}): **{fmt_moeda(p.get('valor'))}** [{p.get('status')}]")
                                 
-                            # Identificação da pessoa original que enviou o PIX ou upload web
-                            desc_origem = c_info.get('descricao_bancaria') or l_info.get('descricao') or "Comprovante anexado via web"
-                            
-                            st.caption(f" • Parcela {p.get('numero_parcela',1)}: {fmt_moeda(p.get('valor'))} — {p['status']}")
-                            st.caption(f"&nbsp;&nbsp;&nbsp;&nbsp;↳ 📅 **Pgto:** {dt_pg} | 🔗 **Vinculado em:** {dt_assoc}")
-                            st.caption(f"&nbsp;&nbsp;&nbsp;&nbsp;↳ 📄 **Origem:** {desc_origem}")
-                            
-                        st.markdown("<hr style='margin:6px 0;border-color:#E2E8F0;'>", unsafe_allow_html=True)
+                                if c_p2.button("🗑️", key=f"del_pg_{p['id']}", help="Excluir este pagamento"):
+                                    sb_request("inscricao_pagamentos", "DELETE", filtros={"id": f"eq.{p['id']}"})
+                                    novo_pago = max(v_pago - float(p.get('valor') or 0), 0)
+                                    n_st = "Completo" if novo_pago >= v_tot - 0.01 else ("Parcial" if novo_pago > 0 else "Pendente")
+                                    sb_request("inscricoes", "PATCH", {"valor_pago": novo_pago, "status_pagamento": n_st}, filtros={"id": f"eq.{insc['id']}"})
+                                    st.cache_data.clear(); st.rerun()
+
+                        # Ações Manuais (Pagamento em Dinheiro e Desistência)
+                        st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
+                        c_act1, c_act2 = st.columns(2)
+                        
+                        with c_act1.popover("💵 Adicionar Pagamento Manual"):
+                            val_manual = st.number_input("Valor (R$)", value=float(falta), min_value=0.01, key=f"val_man_{insc['id']}")
+                            if st.button("Lançar Pagamento", key=f"btn_man_{insc['id']}", type="primary", use_container_width=True):
+                                sb_request("inscricao_pagamentos", "POST", {
+                                    "inscricao_id": insc["id"], "numero_parcela": len(pgs_insc) + 1,
+                                    "valor": float(val_manual), "data_pagamento": str(hoje_sp()),
+                                    "status": "Aprovado"
+                                })
+                                novo_pago = v_pago + val_manual
+                                n_st = "Completo" if novo_pago >= v_tot - 0.01 else "Parcial"
+                                sb_request("inscricoes", "PATCH", {"valor_pago": novo_pago, "status_pagamento": n_st}, filtros={"id": f"eq.{insc['id']}"})
+                                st.cache_data.clear(); st.rerun()
+                                
+                        if c_act2.button("❌ Marcar como Desistente", key=f"desist_{insc['id']}", use_container_width=True):
+                            sb_request("inscricoes", "PATCH", {"status_pagamento": "Desistente"}, filtros={"id": f"eq.{insc['id']}"})
+                            st.cache_data.clear(); st.rerun()
+
+                # Bloco de Desistentes Isolado no Fundo
+                if desistentes:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    with st.expander(f"❌ Participantes Desistentes ({len(desistentes)})"):
+                        for d in desistentes:
+                            st.write(f"- {d['nome_participante']} (Chegou a pagar {fmt_moeda(d.get('valor_pago') or 0)})")
+                            if st.button("Restaurar Inscrição", key=f"rest_{d['id']}"):
+                                n_st = "Completo" if float(d.get('valor_pago') or 0) >= float(d.get('valor_total') or 0) else ("Parcial" if float(d.get('valor_pago') or 0) > 0 else "Pendente")
+                                sb_request("inscricoes", "PATCH", {"status_pagamento": n_st}, filtros={"id": f"eq.{d['id']}"})
+                                st.cache_data.clear(); st.rerun()
+
+        # -------------------------------------------------------------
+        # ABA 3: AUDITORIA GLOBAl E ACHADOS E PERDIDOS (OPÇÃO 1)
+        # -------------------------------------------------------------
+        with tab_auditoria:
+            st.markdown("### Encontro de Contas (Líder vs Tesouraria)")
+            st.info("A conciliação é global. Verifique se o total aprovado por você bate com o dinheiro que o Tesoureiro confirmou no banco.")
+            
+            ids_inscricoes = [i['id'] for i in inscricoes_evento_todas]
+            total_lider = sum(float(p['valor']) for p in pagamentos_all if p.get('status') == 'Aprovado' and p.get('inscricao_id') in ids_inscricoes)
+            total_tesouraria = sum(float(c['valor']) for c in creditos_ofx_all)
+            
+            delta = round(total_tesouraria - total_lider, 2)
+            
+            c_aud1, c_aud2 = st.columns(2)
+            c_aud1.metric("Visão do Líder (Total Aprovado)", fmt_moeda(total_lider))
+            c_aud2.metric("Visão da Tesouraria (Total OFX no Banco)", fmt_moeda(total_tesouraria))
+            
+            if delta < -0.01:
+                st.error(f"🚨 **Alerta de Furo:** O banco recebeu {fmt_moeda(abs(delta))} a menos do que você aprovou nas fichas. Verifique se você aprovou um comprovante falso ou se alguém pagou em dinheiro vivo e o caixa não foi lançado.")
+            elif delta > 0.01:
+                st.warning(f"⚠️ **Achados e Perdidos:** Há {fmt_moeda(delta)} a mais na conta bancária do que nas fichas aprovadas. Alguém transferiu e esqueceu de mandar o comprovante. Veja a lista abaixo.")
+            else:
+                st.success("✅ **Conciliado!** Os valores aprovados batem exatamente com o dinheiro carimbado pelo banco.")
+            
+            st.markdown("<hr style='margin:20px 0;'>", unsafe_allow_html=True)
+            st.markdown("#### 💵 Extrato Bruto do Banco (Achados e Perdidos)")
+            st.caption("Esta é a lista crua de tudo que caiu no banco da igreja com o código deste evento.")
+            
+            if not creditos_ofx_all:
+                st.write("Nenhum depósito bancário vinculado a este evento ainda.")
+            else:
+                for cred in sorted(creditos_ofx_all, key=lambda x: x['data'], reverse=True):
+                    dt = pd.to_datetime(cred['data']).strftime('%d/%m/%Y') if cred.get('data') else "—"
+                    st.write(f"🔹 **{dt}** — {fmt_moeda(cred['valor'])} — {cred.get('descricao_bancaria', '')}")
 
 # ==========================================
 # METAS E ORÇAMENTOS
