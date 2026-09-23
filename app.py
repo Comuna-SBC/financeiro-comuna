@@ -726,6 +726,7 @@ if not st.session_state["session"]:
                     except Exception as e:
                         st.error("Credenciais inválidas. Verifique seu e-mail e senha.")
                         
+      
         # --- ABA: RECUPERAÇÃO DE SENHA ---
         with tab_recuperar:
             st.markdown("Digite seu e-mail cadastrado para receber o link.")
@@ -735,12 +736,14 @@ if not st.session_state["session"]:
                     if not email_rec:
                         st.warning("⚠️ Digite um e-mail válido.")
                     else:
-                        with st.spinner("Enviando e-mail..."):
+                        with st.spinner("Processando..."):
                             try:
                                 supabase.auth.reset_password_for_email(email_rec)
-                                st.success("📩 E-mail enviado! Verifique sua caixa de entrada e a pasta de spam.")
-                            except Exception as e:
-                                st.error("Erro ao enviar. Verifique se o e-mail está correto.")
+                            except Exception:
+                                pass # Oculta qualquer erro do Supabase para o usuário final
+                            
+                            # Exibe sempre a mensagem genérica padrão de segurança
+                            st.success("📩 Se um e-mail estiver cadastrado em nosso banco de dados, você receberá em instantes um e-mail com as instruções para recuperação de sua senha. Se não localizar na caixa de entrada, não se esqueça de verificar na caixa de SPAM.")
     st.stop()
 
 # Carrega os dados uma vez para o motor ler
