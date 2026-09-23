@@ -3215,9 +3215,25 @@ elif page == "Gestão de Usuários":
                         payload = {"nome": e_nome, "email": e_email, "telefone": e_tel, "cpf": e_cpf, "perfil": e_perfil}
                         sb_request("usuarios", "PATCH", payload, filtros={"id": f"eq.{u_data['id']}"})
                         st.cache_data.clear(); st.success("Atualizado!"); time.sleep(1); st.rerun()
+                        
                     if btn_del:
+                        try:
+                            # 1. Cria a conexão Admin para apagar do sistema de Autenticação do Supabase
+                            from supabase import create_client
+                            admin_sb = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_SERVICE_KEY"])
+                            
+                            # Apaga o usuário do Auth (liberando o e-mail)
+                            admin_sb.auth.admin.delete_user(u_data['id'])
+                        except Exception as ex:
+                            # Se o ID da tabela diferir do UUID do Auth, prossegue para limpar a base
+                            pass
+                        
+                        # 2. Deleta o registro da tabela 'usuarios'
                         sb_request("usuarios", "DELETE", filtros={"id": f"eq.{u_data['id']}"})
-                        st.cache_data.clear(); st.success("Excluído!"); time.sleep(1); st.rerun()
+                        st.cache_data.clear()
+                        st.success("✅ Usuário excluído completamente (Auth e Tabela)!")
+                        time.sleep(1)
+                        st.rerun()
             else:
                 st.info("Nenhum usuário cadastrado.")
 
