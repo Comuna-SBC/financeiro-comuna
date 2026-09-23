@@ -12,6 +12,19 @@ import requests
 import re
 import zipfile
 
+# Esconder elementos padrão do Streamlit (Menu, Rodapé, Barra de Ferramentas e Botão Manage App)
+hide_streamlit_global = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
+    div[data-testid="stDecoration"] {visibility: hidden;}
+    div.viewerBadge_container__1QSob {display: none !important;}
+    </style>
+"""
+st.markdown(hide_streamlit_global, unsafe_allow_html=True)
+
 def hoje_sp():
     return datetime.now(ZoneInfo("America/Sao_Paulo")).date()
 
