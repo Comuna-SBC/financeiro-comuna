@@ -785,6 +785,7 @@ page = st.session_state.page
 # ==========================================
 # ==========================================
 # ==========================================
+# ==========================================
 # RESUMO DO DIA 
 # ==========================================
 if page == "Resumo do Dia":
@@ -793,23 +794,6 @@ if page == "Resumo do Dia":
         div.stMainBlockContainer, div[data-testid="stVerticalBlock"] {
             padding-top: 0rem !important;
         }
-        [data-testid="stHorizontalBlock"] {
-            align-items: stretch;
-        }
-        [data-testid="stHorizontalBlock"] > [data-testid="column"] {
-            display: flex;
-            flex-direction: column;
-        }
-        [data-testid="stHorizontalBlock"] > [data-testid="column"] > div {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-        [data-testid="stHorizontalBlock"] > [data-testid="column"] > div > div[data-testid="stVerticalBlock"] {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -817,9 +801,6 @@ if page == "Resumo do Dia":
     st.markdown(f"Hoje é {hoje_sp().strftime('%d/%m/%Y')}. Aqui está o que precisa da sua atenção.")
 
     df = carregar_lancamentos_df()
-    inscricoes_resumo = carregar("inscricoes")
-    pagamentos_resumo = carregar("inscricao_pagamentos")
-    eventos_resumo = carregar("eventos")
 
     hoje = pd.Timestamp(hoje_sp())
     
@@ -857,10 +838,6 @@ if page == "Resumo do Dia":
             (df['data_fim_recorrencia'].dt.year == ano_atual_num)
         ]
 
-    pagamentos_pendentes = [p for p in pagamentos_resumo if p.get("status") == "Pendente"]
-    inscricoes_por_id = {str(i.get("id")): i for i in inscricoes_resumo}
-    eventos_por_id = {str(e.get("id")): e for e in eventos_resumo}
-
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -890,87 +867,38 @@ if page == "Resumo do Dia":
         st.warning(f"⚠️ Atenção: Existem **{len(recorrencias_expirando)}** lançamentos recorrentes com data final de recorrência programada para este mês de {MESES_PT[hoje.month-1].lower()}. Verifique a necessidade de renovação.")
 
     st.markdown("---")
-    
-    # ----------------------------------------------------
-    # BLOCO NOVO: APROVAÇÃO DE CRÉDITOS MANUAIS (CENTAVOS)
-    # ----------------------------------------------------
-    solicitacoes_pendentes_credito = sb_request("creditos_ofx", "GET", filtros={"status": "eq.Pendente Aprovação"}) or []
-    if solicitacoes_pendentes_credito:
-        st.subheader("🔔 Solicitações de Liberação de Crédito para Eventos")
-        st.info("Líderes de eventos informaram que as pessoas abaixo pagaram sem os centavos de identificação. Verifique se o valor entrou em sua conta e aprove para liberar o crédito no Bolsão do evento.")
-        for solic in solicitacoes_pendentes_credito:
-            ev_nome = eventos_por_id.get(str(solic.get('evento_id')), {}).get('nome', 'Evento Desconhecido')
-            with st.container(border=True):
-                col_s1, col_s2, col_s3 = st.columns([3, 1, 1])
-                col_s1.write(f"**{ev_nome}** — {solic.get('descricao_bancaria')}")
-                col_s1.caption(f"Data informada do pagamento: {pd.to_datetime(solic['data']).strftime('%d/%m/%Y')} | Após aprovar aqui, lembre-se de ir na Tesouraria e mudar a categoria do recebimento original para Inscrição de Evento.")
-                col_s2.write(f"**{fmt_moeda(solic['valor'])}**")
-                
-                b_ap, b_rej = col_s3.columns(2)
-                if b_ap.button("✅ Aprovar", key=f"aprov_solic_{solic['id']}", help="Liberar no Bolsão"):
-                    sb_request("creditos_ofx", "PATCH", {"status": "Disponível"}, filtros={"id": f"eq.{solic['id']}"})
-                    st.cache_data.clear()
-                    st.success("Aprovado! Crédito liberado no bolsão do evento.")
+
+    st.subheader("💳 Contas para pagar")
+    listas_contas = []
+    if not contas_atrasadas.empty:
+        contas_atrasadas["ordem_resumo"] = 1
+        listas_contas.append(contas_atrasadas)
+    if not contas_hoje.empty:
+        contas_hoje["ordem_resumo"] = 2
+        listas_contas.append(contas_hoje)
+
+    contas_para_mostrar = pd.concat(listas_contas, ignore_index=True).sort_values(by=["ordem_resumo", "data_vencimento"]) if listas_contas else pd.DataFrame()
+
+    if contas_para_mostrar.empty:
+        st.success("Nenhuma conta atrasada ou com vencimento hoje.")
+    else:
+        for _, lancamento in contas_para_mostrar.iterrows():
+            vencimento = lancamento.get("data_vencimento")
+            vencimento_formatado = vencimento.strftime("%d/%m/%Y") if pd.notna(vencimento) else "Sem vencimento"
+            situacao = "🔴 Atrasada" if pd.notna(vencimento) and vencimento < hoje else "🟡 Vence hoje"
+
+            linha1, linha2, linha3 = st.columns([4, 2, 2])
+            with linha1:
+                st.write(f"**{lancamento.get('descricao', 'Sem descrição')}**")
+                st.caption(f"{situacao} • {vencimento_formatado}")
+            with linha2:
+                st.write(fmt_moeda(lancamento.get("valor")))
+            with linha3:
+                if st.button("🔍 Detalhes", key=f"resumo_detalhes_{lancamento['id']}", use_container_width=True):
+                    st.session_state.page = "Tesouraria"
+                    st.session_state["tesouraria_tab"] = "⏳ Contas a Pagar/Receber"
                     st.rerun()
-                if b_rej.button("❌ Rejeitar", key=f"rej_solic_{solic['id']}"):
-                    sb_request("creditos_ofx", "PATCH", {"status": "Rejeitado"}, filtros={"id": f"eq.{solic['id']}"})
-                    st.cache_data.clear()
-                    st.rerun()
-        st.markdown("---")
-    # ----------------------------------------------------
-
-    coluna_contas, coluna_comprovantes = st.columns(2)
-
-    with coluna_contas:
-        st.subheader("💳 Contas para pagar")
-        listas_contas = []
-        if not contas_atrasadas.empty:
-            contas_atrasadas["ordem_resumo"] = 1
-            listas_contas.append(contas_atrasadas)
-        if not contas_hoje.empty:
-            contas_hoje["ordem_resumo"] = 2
-            listas_contas.append(contas_hoje)
-
-        contas_para_mostrar = pd.concat(listas_contas, ignore_index=True).sort_values(by=["ordem_resumo", "data_vencimento"]) if listas_contas else pd.DataFrame()
-
-        if contas_para_mostrar.empty:
-            st.success("Nenhuma conta atrasada ou com vencimento hoje.")
-        else:
-            for _, lancamento in contas_para_mostrar.iterrows():
-                vencimento = lancamento.get("data_vencimento")
-                vencimento_formatado = vencimento.strftime("%d/%m/%Y") if pd.notna(vencimento) else "Sem vencimento"
-                situacao = "🔴 Atrasada" if pd.notna(vencimento) and vencimento < hoje else "🟡 Vence hoje"
-
-                linha1, linha2, linha3 = st.columns([3, 1.5, 1.3])
-                with linha1:
-                    st.write(f"**{lancamento.get('descricao', 'Sem descrição')}**")
-                    st.caption(f"{situacao} • {vencimento_formatado}")
-                with linha2:
-                    st.write(fmt_moeda(lancamento.get("valor")))
-                with linha3:
-                    if st.button("🔍 Detalhes", key=f"resumo_detalhes_{lancamento['id']}", use_container_width=True):
-                        st.session_state.page = "Tesouraria"
-                        st.session_state["tesouraria_tab"] = "⏳ Contas a Pagar/Receber"
-                        st.rerun()
-                st.markdown("<hr style='margin:6px 0;border:none;border-top:1px solid #E2E8F0;'>", unsafe_allow_html=True)
-
-    with coluna_comprovantes:
-        st.subheader("🎫 Comprovantes aguardando aprovação")
-        if not pagamentos_pendentes:
-            st.success("Nenhum comprovante pendente.")
-        else:
-            pagamentos_ordenados = sorted(pagamentos_pendentes, key=lambda p: p.get("data_envio", ""))
-            for pagamento in pagamentos_ordenados[:6]:
-                insc = inscricoes_por_id.get(str(pagamento.get("inscricao_id")), {})
-                evento = eventos_por_id.get(str(insc.get("evento_id")), {})
-                st.write(f"**{insc.get('nome_participante', 'Participante')}** - Parcela {pagamento.get('numero_parcela', 1)}")
-                st.caption(f"{evento.get('nome', 'Evento')} • {fmt_moeda(pagamento.get('valor'))}")
-                st.markdown("<hr style='margin:6px 0;border:none;border-top:1px solid #E2E8F0;'>", unsafe_allow_html=True)
-            if len(pagamentos_pendentes) > 6:
-                st.caption(f"Existem mais {len(pagamentos_pendentes) - 6} comprovantes aguardando validação.")
-            if st.button("Ir para Inscrições e Comprovantes →", key="resumo_ir_comprovantes", use_container_width=True):
-                st.session_state.page = "Inscrições e Comprovantes"
-                st.rerun()
+            st.markdown("<hr style='margin:6px 0;border:none;border-top:1px solid #E2E8F0;'>", unsafe_allow_html=True)
 # ==========================================
 # VISÃO CONSOLIDADA
 # ==========================================
