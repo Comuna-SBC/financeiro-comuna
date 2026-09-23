@@ -3160,7 +3160,7 @@ elif page == "Gestão de Usuários":
                         try:
                             # 1. Cria conexão ADMIN (100% segura, rodando apenas no servidor)
                             from supabase import create_client
-                            admin_sb = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_SERVICE_ROLE_KEY"])
+                            admin_sb = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_SERVICE_KEY"]))
                             
                             # 2. Usa a rota de Administração (Cria o usuário sem logar e sem conflito de sessão)
                             admin_sb.auth.admin.create_user({
