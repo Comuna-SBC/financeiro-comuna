@@ -2592,31 +2592,50 @@ elif page == "Inscrições e Comprovantes":
                                     if url_arquivo:
                                         link_comp_str = f" &nbsp;•&nbsp; [📎 **Ver Comprovante**]({url_arquivo})"
                                 
-                                # Usa markdown em vez de write para o link funcionar corretamente
                                 c_p1.markdown(f"- Parcela {p.get('numero_parcela',1)} ({dt}): **{fmt_moeda(p.get('valor'))}** [{p.get('status')}]{link_comp_str}")
                                 
                                 if c_p2.button("🗑️", key=f"del_pg_{p['id']}", help="Excluir este pagamento e apagar o anexo"):
-                                    
-                                    # 1. Apagar o arquivo fisicamente do servidor (Storage)
                                     url_comp = p.get("comprovante_url")
                                     if url_comp:
                                         try:
-                                            # Pega apenas o nome/caminho do arquivo, ignorando a URL inteira se houver
                                             caminho_arquivo = url_comp.split('comprovantes/')[-1] if 'comprovantes/' in url_comp else url_comp
                                             if 'supabase' in globals():
                                                 supabase.storage.from_("comprovantes").remove([caminho_arquivo])
                                         except Exception:
-                                            pass # Se der erro ao apagar a imagem (ex: arquivo já não existe), segue a vida e limpa o banco
+                                            pass 
                                             
-                                    # 2. Deletar a linha do banco de dados
                                     sb_request("inscricao_pagamentos", "DELETE", filtros={"id": f"eq.{p['id']}"})
-                                    
-                                    # 3. Recalcular a ficha do participante
                                     novo_pago = max(v_pago - float(p.get('valor') or 0), 0)
                                     n_st = "Completo" if novo_pago >= v_tot - 0.01 else ("Parcial" if novo_pago > 0 else "Pendente")
                                     sb_request("inscricoes", "PATCH", {"valor_pago": novo_pago, "status_pagamento": n_st}, filtros={"id": f"eq.{insc['id']}"})
-                                    
                                     st.cache_data.clear(); st.rerun()
+
+                        # ==========================================
+                        # AÇÕES MANUAIS (O QUE HAVIA SUMIDO)
+                        # ==========================================
+                        st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
+                        c_act1, c_act2 = st.columns(2)
+                        
+                        with c_act1.popover("💵 Adicionar Pagamento Manual"):
+                            val_manual = st.number_input("Valor (R$)", value=float(falta), min_value=0.0, format="%.2f", key=f"val_man_{insc['id']}")
+                            
+                            if st.button("Lançar Pagamento", key=f"btn_man_{insc['id']}", type="primary", use_container_width=True):
+                                if val_manual <= 0:
+                                    st.error("⚠️ Digite um valor maior que zero.")
+                                else:
+                                    sb_request("inscricao_pagamentos", "POST", {
+                                        "inscricao_id": insc["id"], "numero_parcela": len(pgs_insc) + 1,
+                                        "valor": float(val_manual), "data_pagamento": str(hoje_sp()),
+                                        "status": "Aprovado"
+                                    })
+                                    novo_pago = v_pago + val_manual
+                                    n_st = "Completo" if novo_pago >= v_tot - 0.01 else "Parcial"
+                                    sb_request("inscricoes", "PATCH", {"valor_pago": novo_pago, "status_pagamento": n_st}, filtros={"id": f"eq.{insc['id']}"})
+                                    st.cache_data.clear(); st.rerun()
+                                
+                        if c_act2.button("❌ Marcar como Desistente", key=f"desist_{insc['id']}", use_container_width=True):
+                            sb_request("inscricoes", "PATCH", {"status_pagamento": "Desistente"}, filtros={"id": f"eq.{insc['id']}"})
+                            st.cache_data.clear(); st.rerun()
                 # Bloco de Desistentes Isolado no Fundo
                 if desistentes:
                     st.markdown("<br>", unsafe_allow_html=True)
