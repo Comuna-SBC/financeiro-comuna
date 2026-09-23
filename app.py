@@ -2842,123 +2842,153 @@ elif page == "Analytics Financeiro":
     if df.empty:
         st.info("Nenhum lançamento registrado ainda.")
     else:
-        st.subheader("Filtros")
-        col_f1, col_f2 = st.columns(2)
-        meses_disp = sorted(df['mes_ano'].dropna().unique(), reverse=True)
-        mes_sel = col_f1.multiselect("Selecionar Mês/Ano", meses_disp, default=meses_disp[:6] if len(meses_disp) >= 6 else meses_disp)
-        ignorar_eventos = col_f2.checkbox("Ocultar movimentações de Eventos", value=True)
-
-        df_filtrado = df[df['mes_ano'].isin(mes_sel)]
-        if ignorar_eventos:
-            df_filtrado = df_filtrado[df_filtrado['centro_custo'].isnull()]
-
-        # Totais do período filtrado para os 3 primeiros cards
-        entradas = df_filtrado[df_filtrado['tipo'] == 'Entrada']['valor'].sum()
-        saidas = df_filtrado[df_filtrado['tipo'] == 'Saída']['valor'].sum()
-        
-        # --- CÁLCULO DE CAIXA REAL E PROJETADO (GLOBAL) ---
-        df_concluido = df[df['status'] == 'Concluído'] if 'status' in df.columns else df
-        df_pendente = df[df['status'] == 'Pendente'] if 'status' in df.columns else pd.DataFrame()
-        
-        saldo_inicial_total = sum(float(c.get('saldo_inicial') or 0) for c in contas_bancarias_db)
-        
-        # 1. Caixa Real Hoje
-        entradas_realizadas = df_concluido[df_concluido['tipo'] == 'Entrada']['valor'].sum()
-        saidas_realizadas = df_concluido[df_concluido['tipo'] == 'Saída']['valor'].sum()
-        caixa_real = saldo_inicial_total + entradas_realizadas - saidas_realizadas
-        
-        # 2. Saldo Projetado (Caixa Real + Entradas Pendentes - Saídas Pendentes)
-        entradas_pendentes = df_pendente[df_pendente['tipo'] == 'Entrada']['valor'].sum() if not df_pendente.empty else 0
-        saidas_pendentes = df_pendente[df_pendente['tipo'] == 'Saída']['valor'].sum() if not df_pendente.empty else 0
-        saldo_projetado = caixa_real + entradas_pendentes - saidas_pendentes
-        
-        # 3. Fôlego de Caixa (usando o Caixa Real)
-        media_saidas = saidas / len(mes_sel) if len(mes_sel) > 0 and saidas > 0 else 1
-        meses_reserva = caixa_real / media_saidas if media_saidas > 0 and caixa_real > 0 else 0
-
-        # --- CARDS SUPERIORES ---
-        col_k1, col_k2, col_k3, col_k4, col_k5 = st.columns(5)
-        col_k1.metric("Total Entradas", fmt_moeda(entradas))
-        col_k2.metric("Total Saídas", fmt_moeda(saidas))
-        col_k3.metric("Resultado", fmt_moeda(entradas - saidas))
-        col_k4.metric("Fôlego de Caixa", f"{meses_reserva:.1f} Meses", help="Calculado com base no seu Caixa Real dividido pela média mensal de gastos filtrada.")
-        
-        # Novo card com cor condicional (vermelho se a projeção for negativa)
-        delta_projecao = "- Risco de Caixa" if saldo_projetado < 0 else None
-        col_k5.metric("Projeção de Caixa", fmt_moeda(saldo_projetado), delta=delta_projecao, delta_color="inverse", help="Saldo de hoje abatendo todas as saídas pendentes e somando entradas pendentes.")
-
-        st.markdown("---")
-        st.subheader("Evolução Mensal (Entradas vs Saídas vs Metas)")
-        if not df_filtrado.empty:
-            df_agrupado = df_filtrado.groupby(['mes_ano', 'tipo'])['valor'].sum().unstack(fill_value=0)
-            df_agrupado = df_agrupado.sort_index()
-
-            if 'Entrada' not in df_agrupado.columns:
-                df_agrupado['Entrada'] = 0.0
-            if 'Saída' not in df_agrupado.columns:
-                df_agrupado['Saída'] = 0.0
-
-            metas_lista = carregar("metas_mensais")
-            df_metas = pd.DataFrame(metas_lista)
-            metas_map = {}
-            if not df_metas.empty:
-                df_metas['mes_ano'] = df_metas.apply(lambda r: f"{int(r['ano'])}-{int(r['mes']):02d}", axis=1)
-                metas_map = df_metas.set_index('mes_ano').to_dict('index')
-
-            fig = go.Figure()
-            fig.add_bar(x=df_agrupado.index, y=df_agrupado['Entrada'], name='Entradas', marker_color='#2563EB')
-            fig.add_bar(x=df_agrupado.index, y=df_agrupado['Saída'], name='Saídas', marker_color='#EF4444')
-            
-            if metas_map:
-                fig.add_scatter(x=df_agrupado.index, y=[metas_map.get(m, {}).get('meta_entradas') for m in df_agrupado.index],
-                               name='Meta Entradas', mode='lines+markers', connectgaps=True, line=dict(color='#1E40AF', dash='dot'))
-                fig.add_scatter(x=df_agrupado.index, y=[metas_map.get(m, {}).get('meta_saidas') for m in df_agrupado.index],
-                               name='Teto Saídas', mode='lines+markers', connectgaps=True, line=dict(color='#991B1B', dash='dot'))
-            
-            fig.update_xaxes(type='category')
-            fig.update_layout(barmode='group', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='#1E293B', legend_title_text='')
-            st.plotly_chart(fig, use_container_width=True)
-            
-        st.markdown("---")
-        col_g1, col_g2 = st.columns(2)
-
-        with col_g1:
-            st.subheader("Destino das Saídas")
-            df_saidas_pizza = df_filtrado[df_filtrado['tipo'] == 'Saída']
-            if not df_saidas_pizza.empty:
-                df_pizza = df_saidas_pizza.groupby('categoria_nome')['valor'].sum().reset_index()
-                fig_pie = px.pie(df_pizza, values='valor', names='categoria_nome', hole=0.5, color_discrete_sequence=px.colors.qualitative.Pastel)
-                fig_pie.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='#1E293B')
-                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                st.plotly_chart(fig_pie, use_container_width=True)
-            else:
-                st.info("Sem saídas no período.")
-
-        with col_g2:
-            st.subheader("Orçado vs Realizado (Ano)")
-            ano_atual = hoje_sp().year
-            orcamentos_ano = [o for o in carregar("orcamentos_categoria") if int(o['ano']) == ano_atual]
-            if orcamentos_ano:
-                map_cat_nome = {str(c['id']): c['nome'] for c in categorias_db}
-                for o in orcamentos_ano:
-                    cat_nome = map_cat_nome.get(str(o['categoria_id']), 'Desconhecida')
-                    realizado = df[(df['categoria_nome'] == cat_nome) & (df['data_competencia'].dt.year == ano_atual) & (df['tipo'] == 'Saída')]['valor'].sum()
-                    orcado = float(o['valor_orcado']) or 1
-                    pct = min(realizado / orcado, 1.0)
-                    st.write(f"**{cat_nome}** — {fmt_moeda(realizado)} / {fmt_moeda(orcado)} ({realizado/orcado*100:.0f}%)")
-                    st.progress(pct)
-            else:
-                st.info("Cadastre orçamentos em 'Metas e Orçamentos' para ver esta análise.")
-
-        st.markdown("---")
-        st.subheader("DRE por Evento / Projeto")
-        df_eventos_fin = df[df['centro_custo'].notna() & (df['centro_custo'] != '')]
-        if not df_eventos_fin.empty:
-            resumo = df_eventos_fin.groupby(['centro_custo', 'tipo'])['valor'].sum().unstack(fill_value=0)
-            resumo['Resultado'] = resumo.get('Entrada', 0) - resumo.get('Saída', 0)
-            st.dataframe(resumo.reset_index().rename(columns={'centro_custo': 'Evento/Projeto'}), use_container_width=True, hide_index=True)
+        # Preparar colunas de datas para as duas visões
+        if 'data_competencia' in df.columns:
+            df['data_competencia'] = pd.to_datetime(df['data_competencia'], errors='coerce')
         else:
-            st.info("Nenhuma movimentação vinculada a eventos ainda.")
+            df['data_competencia'] = pd.to_datetime(df['data_vencimento'], errors='coerce')
+            
+        df['mes_ano_comp'] = df['data_competencia'].dt.strftime('%Y-%m')
+
+        # Para Fluxo de Caixa: usar Pagamento se concluído, senão Vencimento
+        def get_data_caixa(row):
+            if row.get('status') == 'Concluído' and pd.notnull(row.get('data_pagamento')):
+                return row['data_pagamento']
+            return row.get('data_vencimento')
+            
+        df['data_base_caixa'] = pd.to_datetime(df.apply(get_data_caixa, axis=1), errors='coerce')
+        df['mes_ano_caixa'] = df['data_base_caixa'].dt.strftime('%Y-%m')
+
+        aba_comp, aba_caixa = st.tabs(["📊 Mês de Competência", "💰 Fluxo de Caixa"])
+
+        # Função encapsulada para não repetir as 100 linhas de código em cada aba
+        def renderizar_painel_analytics(df_source, col_mes_ano, col_data_ref, tab_key):
+            st.subheader("Filtros")
+            col_f1, col_f2 = st.columns(2)
+            meses_disp = sorted(df_source[col_mes_ano].dropna().unique(), reverse=True)
+            mes_sel = col_f1.multiselect("Selecionar Mês/Ano", meses_disp, default=meses_disp[:6] if len(meses_disp) >= 6 else meses_disp, key=f"mes_sel_{tab_key}")
+            ignorar_eventos = col_f2.checkbox("Ocultar movimentações de Eventos", value=True, key=f"ign_ev_{tab_key}")
+
+            df_filtrado = df_source[df_source[col_mes_ano].isin(mes_sel)]
+            if ignorar_eventos:
+                df_filtrado = df_filtrado[df_filtrado['centro_custo'].isnull()]
+
+            # Totais do período filtrado para os 3 primeiros cards
+            entradas = df_filtrado[df_filtrado['tipo'] == 'Entrada']['valor'].sum()
+            saidas = df_filtrado[df_filtrado['tipo'] == 'Saída']['valor'].sum()
+            
+            # --- CÁLCULO DE CAIXA REAL E PROJETADO (GLOBAL) ---
+            df_concluido = df_source[df_source['status'] == 'Concluído'] if 'status' in df_source.columns else df_source
+            df_pendente = df_source[df_source['status'] == 'Pendente'] if 'status' in df_source.columns else pd.DataFrame()
+            
+            saldo_inicial_total = sum(float(c.get('saldo_inicial') or 0) for c in contas_bancarias_db)
+            
+            # 1. Caixa Real Hoje
+            entradas_realizadas = df_concluido[df_concluido['tipo'] == 'Entrada']['valor'].sum()
+            saidas_realizadas = df_concluido[df_concluido['tipo'] == 'Saída']['valor'].sum()
+            caixa_real = saldo_inicial_total + entradas_realizadas - saidas_realizadas
+            
+            # 2. Saldo Projetado (Caixa Real + Entradas Pendentes - Saídas Pendentes)
+            entradas_pendentes = df_pendente[df_pendente['tipo'] == 'Entrada']['valor'].sum() if not df_pendente.empty else 0
+            saidas_pendentes = df_pendente[df_pendente['tipo'] == 'Saída']['valor'].sum() if not df_pendente.empty else 0
+            saldo_projetado = caixa_real + entradas_pendentes - saidas_pendentes
+            
+            # 3. Fôlego de Caixa (usando o Caixa Real)
+            media_saidas = saidas / len(mes_sel) if len(mes_sel) > 0 and saidas > 0 else 1
+            meses_reserva = caixa_real / media_saidas if media_saidas > 0 and caixa_real > 0 else 0
+
+            # --- CARDS SUPERIORES ---
+            col_k1, col_k2, col_k3, col_k4, col_k5 = st.columns(5)
+            col_k1.metric("Total Entradas", fmt_moeda(entradas))
+            col_k2.metric("Total Saídas", fmt_moeda(saidas))
+            col_k3.metric("Resultado", fmt_moeda(entradas - saidas))
+            col_k4.metric("Fôlego de Caixa", f"{meses_reserva:.1f} Meses", help="Calculado com base no seu Caixa Real dividido pela média mensal de gastos filtrada.")
+            
+            # Novo card com cor condicional (vermelho se a projeção for negativa)
+            delta_projecao = "- Risco de Caixa" if saldo_projetado < 0 else None
+            col_k5.metric("Projeção de Caixa", fmt_moeda(saldo_projetado), delta=delta_projecao, delta_color="inverse", help="Saldo de hoje abatendo todas as saídas pendentes e somando entradas pendentes.")
+
+            st.markdown("---")
+            st.subheader("Evolução Mensal (Entradas vs Saídas vs Metas)")
+            if not df_filtrado.empty:
+                df_agrupado = df_filtrado.groupby([col_mes_ano, 'tipo'])['valor'].sum().unstack(fill_value=0)
+                df_agrupado = df_agrupado.sort_index()
+
+                if 'Entrada' not in df_agrupado.columns:
+                    df_agrupado['Entrada'] = 0.0
+                if 'Saída' not in df_agrupado.columns:
+                    df_agrupado['Saída'] = 0.0
+
+                metas_lista = carregar("metas_mensais")
+                df_metas = pd.DataFrame(metas_lista)
+                metas_map = {}
+                if not df_metas.empty:
+                    df_metas['mes_ano_fmt'] = df_metas.apply(lambda r: f"{int(r['ano'])}-{int(r['mes']):02d}", axis=1)
+                    metas_map = df_metas.set_index('mes_ano_fmt').to_dict('index')
+
+                fig = go.Figure()
+                fig.add_bar(x=df_agrupado.index, y=df_agrupado['Entrada'], name='Entradas', marker_color='#2563EB')
+                fig.add_bar(x=df_agrupado.index, y=df_agrupado['Saída'], name='Saídas', marker_color='#EF4444')
+                
+                if metas_map:
+                    fig.add_scatter(x=df_agrupado.index, y=[metas_map.get(m, {}).get('meta_entradas') for m in df_agrupado.index],
+                                   name='Meta Entradas', mode='lines+markers', connectgaps=True, line=dict(color='#1E40AF', dash='dot'))
+                    fig.add_scatter(x=df_agrupado.index, y=[metas_map.get(m, {}).get('meta_saidas') for m in df_agrupado.index],
+                                   name='Teto Saídas', mode='lines+markers', connectgaps=True, line=dict(color='#991B1B', dash='dot'))
+                
+                fig.update_xaxes(type='category')
+                fig.update_layout(barmode='group', plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='#1E293B', legend_title_text='')
+                st.plotly_chart(fig, use_container_width=True, key=f"chart_evo_{tab_key}")
+                
+            st.markdown("---")
+            col_g1, col_g2 = st.columns(2)
+
+            with col_g1:
+                st.subheader("Destino das Saídas")
+                df_saidas_pizza = df_filtrado[df_filtrado['tipo'] == 'Saída']
+                if not df_saidas_pizza.empty:
+                    df_pizza = df_saidas_pizza.groupby('categoria_nome')['valor'].sum().reset_index()
+                    fig_pie = px.pie(df_pizza, values='valor', names='categoria_nome', hole=0.5, color_discrete_sequence=px.colors.qualitative.Pastel)
+                    fig_pie.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font_color='#1E293B')
+                    fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                    st.plotly_chart(fig_pie, use_container_width=True, key=f"chart_pie_{tab_key}")
+                else:
+                    st.info("Sem saídas no período.")
+
+            with col_g2:
+                st.subheader("Orçado vs Realizado (Ano)")
+                ano_atual = hoje_sp().year
+                orcamentos_ano = [o for o in carregar("orcamentos_categoria") if int(o['ano']) == ano_atual]
+                if orcamentos_ano:
+                    map_cat_nome = {str(c['id']): c['nome'] for c in categorias_db}
+                    for o in orcamentos_ano:
+                        cat_nome = map_cat_nome.get(str(o['categoria_id']), 'Desconhecida')
+                        realizado = df_source[(df_source['categoria_nome'] == cat_nome) & (df_source[col_data_ref].dt.year == ano_atual) & (df_source['tipo'] == 'Saída')]['valor'].sum()
+                        orcado = float(o['valor_orcado']) or 1
+                        pct = min(realizado / orcado, 1.0)
+                        st.write(f"**{cat_nome}** — {fmt_moeda(realizado)} / {fmt_moeda(orcado)} ({realizado/orcado*100:.0f}%)")
+                        st.progress(pct)
+                else:
+                    st.info("Cadastre orçamentos em 'Metas e Orçamentos' para ver esta análise.")
+
+            st.markdown("---")
+            st.subheader("DRE por Evento / Projeto")
+            df_eventos_fin = df_source[df_source['centro_custo'].notna() & (df_source['centro_custo'] != '')]
+            if not df_eventos_fin.empty:
+                resumo = df_eventos_fin.groupby(['centro_custo', 'tipo'])['valor'].sum().unstack(fill_value=0)
+                resumo['Resultado'] = resumo.get('Entrada', 0) - resumo.get('Saída', 0)
+                st.dataframe(resumo.reset_index().rename(columns={'centro_custo': 'Evento/Projeto'}), use_container_width=True, hide_index=True)
+            else:
+                st.info("Nenhuma movimentação vinculada a eventos ainda.")
+
+        # Renderizar as abas invocando a função dinâmica
+        with aba_comp:
+            st.caption("Visão baseada na Data de Competência (ideal para previsão e orçamentos).")
+            renderizar_painel_analytics(df, col_mes_ano='mes_ano_comp', col_data_ref='data_competencia', tab_key="comp")
+            
+        with aba_caixa:
+            st.caption("Visão baseada na Data Real de Pagamento (ideal para auditar o saldo bancário).")
+            renderizar_painel_analytics(df, col_mes_ano='mes_ano_caixa', col_data_ref='data_base_caixa', tab_key="caixa")
 
 # ==========================================
 # EXPORTAR CONTABILIDADE
