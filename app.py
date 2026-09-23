@@ -702,11 +702,12 @@ usuario_match = next((u for u in usuarios_db if u.get('email') == user_email_log
 if usuario_match:
     usuario_logado = usuario_match
 else:
-    # Se o admin criou via Auth mas não está na tabela de usuários
-    usuario_logado = {"nome": user_email_logado, "perfil": "Visão Total Tesouraria", "id": None, "email": user_email_logado}
+    # CORREÇÃO DE SEGURANÇA: Se o usuário fez login mas não está na tabela,
+    # ele é bloqueado imediatamente com o perfil "Sem Acesso".
+    usuario_logado = {"nome": user_email_logado, "perfil": "Sem Acesso", "id": None, "email": user_email_logado}
 
 st.session_state["usuario_logado"] = usuario_logado
-perfil_ativo = usuario_logado.get("perfil", "Visão Total Tesouraria")
+perfil_ativo = usuario_logado.get("perfil", "Sem Acesso")
 
 # Exibe o card do usuário logado e botão de sair
 st.sidebar.markdown(f"""
@@ -722,8 +723,16 @@ if st.sidebar.button("🚪 Sair (Logout)", use_container_width=True):
     st.cache_data.clear()
     st.rerun()
 
+# Lógica da página inicial baseada no perfil
 if "page" not in st.session_state:
-    st.session_state.page = "Resumo do Dia" if perfil_ativo == "Visão Total Tesouraria" else ("Visão Consolidada" if perfil_ativo == "Visão Conselho" else "Painel de Eventos")
+    if perfil_ativo in ["Visão Total Tesouraria", "Admin"]:
+        st.session_state.page = "Resumo do Dia"
+    elif perfil_ativo == "Visão Conselho":
+        st.session_state.page = "Visão Consolidada"
+    elif perfil_ativo == "Visão Eventos":
+        st.session_state.page = "Painel de Eventos"
+    else:
+        st.session_state.page = "Bloqueado"
 
 st.markdown("""
     <style>
@@ -750,7 +759,12 @@ def nav_button(label, icon):
 
 st.sidebar.markdown("<hr style='margin: 8px 0; border-color: #E2E8F0;'>", unsafe_allow_html=True)
 
-if perfil_ativo == "Visão Total Tesouraria":
+# USUÁRIO SEM ACESSO
+if perfil_ativo == "Sem Acesso":
+    st.sidebar.error("🚫 Seu cadastro não possui um perfil válido atribuído. Solicite permissão ao Administrador.")
+
+# Admin e Tesouraria
+if perfil_ativo in ["Visão Total Tesouraria", "Admin"]:
     secao("OPERACIONAL")
     nav_button("Resumo do Dia", "🏠")
     nav_button("Tesouraria", "💰")
@@ -765,25 +779,27 @@ if perfil_ativo == "Visão Total Tesouraria":
     nav_button("Analytics Financeiro", "📊")
     nav_button("Exportar Contabilidade", "📥")
 
-if perfil_ativo in ["Visão Total Tesouraria", "Visão Conselho"]:
+# Visão do Conselho
+if perfil_ativo in ["Visão Total Tesouraria", "Admin", "Visão Conselho"]:
     if perfil_ativo == "Visão Conselho":
         secao("VISÃO GERAL")
         nav_button("Visão Consolidada", "📋")
         nav_button("Analytics Financeiro", "📊")
 
-if perfil_ativo in ["Visão Total Tesouraria", "Visão Eventos"]:
+# Gestão de Eventos
+if perfil_ativo in ["Visão Total Tesouraria", "Admin", "Visão Eventos"]:
     st.sidebar.markdown("<hr style='margin: 8px 0; border-color: #E2E8F0;'>", unsafe_allow_html=True)
     secao("GESTÃO DE EVENTOS")
     nav_button("Painel de Eventos", "🎫")
     nav_button("Inscrições e Comprovantes", "✅")
 
-if perfil_ativo == "Visão Total Tesouraria":
+# ADMINISTRAÇÃO (Exclusivo)
+if perfil_ativo == "Admin":
     st.sidebar.markdown("<hr style='margin: 8px 0 4px 0; border-color: #E2E8F0;'>", unsafe_allow_html=True)
     secao("ADMINISTRAÇÃO")
     nav_button("Gestão de Usuários", "👥")
 
 page = st.session_state.page
-
 # ==========================================
 # ==========================================
 # ==========================================
