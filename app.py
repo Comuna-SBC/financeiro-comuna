@@ -12,31 +12,7 @@ import requests
 import re
 import zipfile
 
-# Tenta pegar o perfil do usuário logado. 
-# Se for o link público, isso retornará None (vazio).
-perfil_logado = st.session_state.get("perfil")
 
-# Só injeta o CSS para esconder os botões se o perfil NÃO for "Admin"
-if perfil_logado != "Admin":
-    hide_streamlit_global = """
-        <style>
-        #MainMenu {visibility: hidden;}
-        footer {visibility: hidden;}
-        
-        /* 
-           O 'header' NÃO está aqui no CSS. 
-           Isso garante que o menu hambúrguer (☰) volte a aparecer no celular! 
-        */
-        
-        /* Esconde a barra superior de ferramentas (deploy, github) */
-        [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
-        
-        /* Esconde o botão flutuante 'Manage app' no canto inferior */
-        .viewerBadge_container__1QSob {display: none !important;}
-        .viewerBadge_link__1S137 {display: none !important;}
-        </style>
-    """
-    st.markdown(hide_streamlit_global, unsafe_allow_html=True)
 
 # ==========================================
 # CONFIGURAÇÃO DA PÁGINA E DESIGN SYSTEM
