@@ -796,7 +796,7 @@ st.markdown("""
         min-height: 0px !important;
         height: auto !important;
         margin-top: 4px !important;
-        transform: translateX(-10px) !important; /* Afasta da borda direita e da seta */
+        transform: translateX(-2px) !important; /* Afasta da borda direita e da seta */
     }
     /* Reduz o tamanho da engrenagem */
     [data-testid="stSidebar"] [data-testid="stPopover"] button p {
@@ -806,7 +806,7 @@ st.markdown("""
     /* Efeito suave ao passar o mouse */
     [data-testid="stSidebar"] [data-testid="stPopover"] button:hover {
         background: transparent !important;
-        transform: translateX(-10px) scale(1.1);
+        transform: translateX(-2px) scale(1.1);
         color: #000 !important;
     }
     
