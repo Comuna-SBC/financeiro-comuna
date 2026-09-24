@@ -772,22 +772,22 @@ st.session_state["usuario_logado"] = usuario_logado
 perfil_ativo = usuario_logado.get("perfil", "Sem Acesso")
 
 # ==========================================
-# CSS AGRESSIVO: MATA ESPAÇOS, BORDAS E SETAS
+# CSS AJUSTADO: ESPAÇO SUPERIOR E ENGRENAGEM MENOR/DESLOCADA
 # ==========================================
 st.markdown("""
     <style>
-    /* 1. MATA O ESPAÇO GIGANTE DO TOPO (Força o conteúdo a subir) */
+    /* 1. Espaçamento superior ajustado (não cola mais no topo) */
     [data-testid="stSidebarUserContent"] {
         padding-top: 0rem !important;
-        margin-top: -3.5rem !important; /* Puxa o card para o teto à força */
+        margin-top: -1.2rem !important; /* Puxa para cima com folga adequada */
     }
     
-    /* 2. TRANSFORMA O BOTÃO DO POPOVER NUMA ENGRENAGEM LIMPA */
+    /* 2. ENGRENAGEM REDUZIDA E DESLOCADA PARA A ESQUERDA */
     /* Esconde permanentemente a setinha (chevron/svg) do Streamlit */
     [data-testid="stSidebar"] [data-testid="stPopover"] button svg {
         display: none !important; 
     }
-    /* Remove as bordas, o fundo cinza e o padding do botão */
+    /* Remove bordas e joga a engrenagem para a esquerda (longe da seta nativa) */
     [data-testid="stSidebar"] [data-testid="stPopover"] button {
         border: none !important;
         background: transparent !important;
@@ -795,17 +795,18 @@ st.markdown("""
         padding: 0px !important;
         min-height: 0px !important;
         height: auto !important;
-        margin-top: 8px !important; /* Alinha perfeitamente com o texto */
+        margin-top: 4px !important;
+        transform: translateX(-10px) !important; /* Afasta da borda direita e da seta */
     }
-    /* Aumenta apenas a engrenagem */
+    /* Reduz o tamanho da engrenagem */
     [data-testid="stSidebar"] [data-testid="stPopover"] button p {
-        font-size: 1.4rem !important;
+        font-size: 1.15rem !important; /* Tamanho menor e elegante */
         line-height: 1 !important;
     }
     /* Efeito suave ao passar o mouse */
     [data-testid="stSidebar"] [data-testid="stPopover"] button:hover {
         background: transparent !important;
-        transform: scale(1.15);
+        transform: translateX(-10px) scale(1.1);
         color: #000 !important;
     }
     
@@ -829,7 +830,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# NOVO CARD DO USUÁRIO COMPACTO 
+# CARD DO USUÁRIO COMPACTO 
 # ==========================================
 
 card_usuario = st.sidebar.container(border=True)
@@ -838,14 +839,13 @@ col_texto, col_engrenagem = card_usuario.columns([5, 1])
 
 with col_texto:
     st.markdown(f"""
-        <div style="line-height: 1.2;">
+        <div style="line-height: 1.2; padding: 2px 0;">
             <p style='margin: 0; font-weight: 700; color: #1E293B; font-size: 0.95rem;'>👤 {usuario_logado.get('nome')}</p>
             <p style='margin: 0; font-size: 0.75rem; color: #64748B; margin-top: 2px;'>{perfil_ativo}</p>
         </div>
     """, unsafe_allow_html=True)
 
 with col_engrenagem:
-    # O popover agora é apenas a engrenagem limpa
     with st.popover("⚙️"):
         st.markdown("<p style='margin-bottom: 5px; font-weight: 600; font-size: 0.9rem;'>⚙️ Opções da Conta</p>", unsafe_allow_html=True)
         nova_s = st.text_input("Nova senha", type="password", key="input_ns", placeholder="Mín. 6 caracteres")
