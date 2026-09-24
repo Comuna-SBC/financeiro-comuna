@@ -776,11 +776,34 @@ perfil_ativo = usuario_logado.get("perfil", "Sem Acesso")
 
 # Exibe o card do usuário logado e botão de sair
 st.sidebar.markdown(f"""
-    <div style='padding: 12px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; margin-bottom: 12px;'>
+    <div style='padding: 12px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; margin-bottom: 0px;'>
         <p style='margin: 0; font-weight: 700; color: #1E293B; font-size: 0.95rem;'>👤 {usuario_logado.get('nome')}</p>
         <p style='margin: 0; font-size: 0.75rem; color: #64748B; margin-top: 2px;'>{perfil_ativo}</p>
     </div>
 """, unsafe_allow_html=True)
+
+# ==========================================
+# NOVO BLOCO INSERIDO: TROCA DE SENHA
+# ==========================================
+with st.sidebar.expander("⚙️ Trocar Senha"):
+    nova_s = st.text_input("Nova senha (mín. 6 caracteres)", type="password", key="input_ns")
+    conf_s = st.text_input("Confirme a senha", type="password", key="input_cs")
+    
+    if st.button("Atualizar Senha", use_container_width=True):
+        if len(nova_s) < 6:
+            st.error("A senha deve ter no mínimo 6 caracteres.")
+        elif nova_s != conf_s:
+            st.error("As senhas não coincidem.")
+        else:
+            with st.spinner("Atualizando..."):
+                try:
+                    # Atualiza a senha direto no cofre do Supabase
+                    supabase.auth.update_user({"password": nova_s})
+                    st.success("✅ Senha atualizada com sucesso!")
+                except Exception as e:
+                    st.error(f"Erro ao atualizar a senha: {e}")
+st.sidebar.write("") # Pequeno espaço visual antes do botão de Sair
+# ==========================================
 
 if st.sidebar.button("🚪 Sair (Logout)", use_container_width=True):
     supabase.auth.sign_out()
