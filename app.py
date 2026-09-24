@@ -709,26 +709,21 @@ if not st.session_state["session"]:
     col_l1, col_l2, col_l3 = st.columns([1, 1.5, 1])
     
     with col_l2:
-        tab_login = st.tabs(["🔐 Entrar"])
-        
-        # --- ABA: ENTRAR ---
-        with tab_login:
-            with st.form("login_form"):
-                st.markdown("Entre com suas credenciais para acessar o painel de administração.")
-                email = st.text_input("E-mail")
-                senha = st.text_input("Senha", type="password")
-                submit = st.form_submit_button("Entrar", use_container_width=True, type="primary")
-                if submit:
-                    try:
-                        res = supabase.auth.sign_in_with_password({"email": email, "password": senha})
-                        st.session_state["session"] = res.session
-                        st.rerun()
-                    except Exception as e:
-                        st.error("Credenciais inválidas. Verifique seu e-mail e senha.")
-                        
-      
-       
+        with st.form("login_form"):
+            st.markdown("Entre com suas credenciais para acessar o painel de administração.")
+            email = st.text_input("E-mail")
+            senha = st.text_input("Senha", type="password")
+            submit = st.form_submit_button("Entrar", use_container_width=True, type="primary")
+            if submit:
+                try:
+                    res = supabase.auth.sign_in_with_password({"email": email, "password": senha})
+                    st.session_state["session"] = res.session
+                    st.rerun()
+                except Exception as e:
+                    st.error("Credenciais inválidas. Verifique seu e-mail e senha.")
+                    
     st.stop()
+
 
 # Carrega os dados uma vez para o motor ler
 df_para_motor = carregar_lancamentos_df() 
