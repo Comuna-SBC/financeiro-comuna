@@ -772,46 +772,70 @@ st.session_state["usuario_logado"] = usuario_logado
 perfil_ativo = usuario_logado.get("perfil", "Sem Acesso")
 
 # ==========================================
-# CSS: MATA O ESPAÇO NO TOPO DA SIDEBAR E AJUSTA BOTÕES
+# CSS: MATA ESPAÇOS E FORMATA A ENGRENAGEM
 # ==========================================
 st.markdown("""
     <style>
-    /* 1. Remove o espaço em branco gigante nativo do topo da Sidebar */
-    [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
-        padding-top: 1.5rem !important; /* Ajuste fino (reduzido de 6rem do padrão) */
+    /* 1. Força a barra lateral inteira para cima */
+    [data-testid="stSidebar"] > div:first-child {
+        padding-top: 1.5rem !important; 
+    }
+    [data-testid="stSidebarUserContent"] {
+        padding-top: 0rem !important; 
     }
     
-    /* 2. Cores e estilos dos botões da Sidebar */
+    /* 2. Formatação Geral da Sidebar */
     [data-testid="stSidebar"] {
         background-color: #F8FAFC !important;
         border-right: 1px solid #E2E8F0 !important;
     }
-    [data-testid="stSidebar"] .stButton button {
+    [data-testid="stSidebar"] .stButton > button {
         width: 100%; text-align: left; justify-content: flex-start;
         border-radius: 8px; padding: 0.5rem 1rem; font-weight: 600;
         margin-bottom: 4px; transition: all 0.2s ease;
+    }
+    
+    /* 3. Estilização INVISÍVEL do botão da Engrenagem */
+    /* Esconde a seta para baixo do dropdown */
+    [data-testid="stSidebar"] [data-testid="stPopover"] > button svg {
+        display: none !important;
+    }
+    /* Tira a borda e fundo do botão para não esbarrar no card */
+    [data-testid="stSidebar"] [data-testid="stPopover"] > button {
+        background-color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        font-size: 1.25rem !important;
+        color: #475569 !important;
+        justify-content: center !important;
+        width: 100% !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stPopover"] > button:hover {
+        transform: scale(1.1);
+        color: #1E293B !important;
+        background-color: transparent !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# NOVO CARD DO USUÁRIO COMPACTO (COM MENU FLUTUANTE)
+# NOVO CARD DO USUÁRIO COMPACTO 
 # ==========================================
 
-# Cria uma caixa com borda para simular o card (AGORA DIRETO NO TOPO)
 card_usuario = st.sidebar.container(border=True)
 
-# Divide a caixa: Nome à esquerda, Engrenagem à direita
-col_texto, col_engrenagem = card_usuario.columns([4, 1], vertical_alignment="center")
+# Colunas ajustadas para a engrenagem ter espaço folgado
+col_texto, col_engrenagem = card_usuario.columns([4.5, 1.2], vertical_alignment="center")
 
 with col_texto:
     st.markdown(f"""
-        <p style='margin: 0; font-weight: 700; color: #1E293B; font-size: 0.95rem;'>👤 {usuario_logado.get('nome')}</p>
+        <p style='margin: 0; font-weight: 700; color: #1E293B; font-size: 0.95rem; line-height: 1.2;'>👤 {usuario_logado.get('nome')}</p>
         <p style='margin: 0; font-size: 0.75rem; color: #64748B; margin-top: 2px;'>{perfil_ativo}</p>
     """, unsafe_allow_html=True)
 
 with col_engrenagem:
-    # O popover abre um menu sobreposto ao invés de empurrar a tela para baixo
+    # A Engrenagem sem seta e sem borda
     with st.popover("⚙️"):
         st.markdown("<p style='margin-bottom: 5px; font-weight: 600; font-size: 0.9rem;'>Trocar Senha</p>", unsafe_allow_html=True)
         nova_s = st.text_input("Nova senha", type="password", key="input_ns", placeholder="Mín. 6 caracteres")
@@ -842,7 +866,6 @@ with col_engrenagem:
 # RENDERIZAÇÃO DOS MENUS DE ACESSO
 # ==========================================
 
-# Lógica da página inicial baseada no perfil
 if "page" not in st.session_state:
     if perfil_ativo in ["Visão Total Tesouraria", "Admin"]:
         st.session_state.page = "Resumo do Dia"
@@ -903,7 +926,6 @@ if perfil_ativo == "Admin":
     nav_button("Gestão de Usuários", "👥")
 
 page = st.session_state.page
-# ==========================================
 # ==========================================
 # ==========================================
 # RESUMO DO DIA 
