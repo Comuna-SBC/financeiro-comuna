@@ -709,7 +709,7 @@ if not st.session_state["session"]:
     col_l1, col_l2, col_l3 = st.columns([1, 1.5, 1])
     
     with col_l2:
-        tab_login, tab_recuperar = st.tabs(["🔐 Entrar", "🔑 Esqueci minha senha"])
+        tab_login = st.tabs(["🔐 Entrar"])
         
         # --- ABA: ENTRAR ---
         with tab_login:
@@ -727,23 +727,7 @@ if not st.session_state["session"]:
                         st.error("Credenciais inválidas. Verifique seu e-mail e senha.")
                         
       
-        # --- ABA: RECUPERAÇÃO DE SENHA ---
-        with tab_recuperar:
-            st.markdown("Digite seu e-mail cadastrado para receber o link.")
-            with st.form("form_recuperar"):
-                email_rec = st.text_input("E-mail")
-                if st.form_submit_button("Enviar Link de Recuperação", type="primary", use_container_width=True):
-                    if not email_rec:
-                        st.warning("⚠️ Digite um e-mail válido.")
-                    else:
-                        with st.spinner("Processando..."):
-                            try:
-                                supabase.auth.reset_password_for_email(email_rec)
-                            except Exception:
-                                pass # Oculta qualquer erro do Supabase para o usuário final
-                            
-                            # Exibe sempre a mensagem genérica padrão de segurança
-                            st.success("📩 Se um e-mail estiver cadastrado em nosso banco de dados, você receberá em instantes um e-mail com as instruções para recuperação de sua senha. Se não localizar na caixa de entrada, não se esqueça de verificar na caixa de SPAM.")
+       
     st.stop()
 
 # Carrega os dados uma vez para o motor ler
