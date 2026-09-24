@@ -710,7 +710,7 @@ if not st.session_state["session"]:
     
     with col_l2:
         with st.form("login_form"):
-            st.markdown("Entre com suas credenciais para acessar o painel de administração.")
+            st.markdown("Entre com suas credenciais para acessar o sistema.")
             email = st.text_input("E-mail")
             senha = st.text_input("Senha", type="password")
             submit = st.form_submit_button("Entrar", use_container_width=True, type="primary")
