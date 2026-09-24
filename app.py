@@ -859,10 +859,16 @@ with col_engrenagem:
             else:
                 with st.spinner("Atualizando..."):
                     try:
+                        # CORREÇÃO: Restaura o token da sessão ativa antes de atualizar a senha
+                        sessao_ativa = st.session_state.get("session")
+                        if sessao_ativa:
+                            supabase.auth.set_session(sessao_ativa.access_token, sessao_ativa.refresh_token)
+                        
+                        # Executa a alteração da senha
                         supabase.auth.update_user({"password": nova_s})
-                        st.success("✅ Atualizada!")
+                        st.success("✅ Senha atualizada com sucesso!")
                     except Exception as e:
-                        st.error(f"Erro: {e}")
+                        st.error(f"Erro ao atualizar: {e}")
         
         st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
         
