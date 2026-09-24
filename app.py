@@ -846,7 +846,7 @@ with col_texto:
     """, unsafe_allow_html=True)
 
 with col_engrenagem:
-    with st.popover("⚙️"):
+    with st.popover(""):
         st.markdown("<p style='margin-bottom: 5px; font-weight: 600; font-size: 0.9rem;'>⚙️ Opções da Conta</p>", unsafe_allow_html=True)
         nova_s = st.text_input("Nova senha", type="password", key="input_ns", placeholder="Mín. 6 caracteres")
         conf_s = st.text_input("Confirme", type="password", key="input_cs")
