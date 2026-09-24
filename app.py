@@ -772,19 +772,50 @@ st.session_state["usuario_logado"] = usuario_logado
 perfil_ativo = usuario_logado.get("perfil", "Sem Acesso")
 
 # ==========================================
-# CSS: MATA ESPAÇOS E FORMATA A ENGRENAGEM
+# CSS AGRESSIVO: MATA ESPAÇOS, BORDAS E SETAS
 # ==========================================
 st.markdown("""
     <style>
-    /* 1. Força a barra lateral inteira para cima */
-    [data-testid="stSidebar"] > div:first-child {
-        padding-top: 1.5rem !important; 
-    }
+    /* 1. MATA O ESPAÇO GIGANTE DO TOPO (Força o conteúdo a subir) */
     [data-testid="stSidebarUserContent"] {
-        padding-top: 0rem !important; 
+        padding-top: 0rem !important;
+        margin-top: -3.5rem !important; /* Puxa o card para o teto à força */
     }
     
-    /* 2. Formatação Geral da Sidebar */
+    /* 2. TRANSFORMA O BOTÃO DO POPOVER NUMA ENGRENAGEM LIMPA */
+    /* Esconde permanentemente a setinha (chevron/svg) do Streamlit */
+    [data-testid="stSidebar"] [data-testid="stPopover"] button svg {
+        display: none !important; 
+    }
+    /* Remove as bordas, o fundo cinza e o padding do botão */
+    [data-testid="stSidebar"] [data-testid="stPopover"] button {
+        border: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        padding: 0px !important;
+        min-height: 0px !important;
+        height: auto !important;
+        margin-top: 8px !important; /* Alinha perfeitamente com o texto */
+    }
+    /* Aumenta apenas a engrenagem */
+    [data-testid="stSidebar"] [data-testid="stPopover"] button p {
+        font-size: 1.4rem !important;
+        line-height: 1 !important;
+    }
+    /* Efeito suave ao passar o mouse */
+    [data-testid="stSidebar"] [data-testid="stPopover"] button:hover {
+        background: transparent !important;
+        transform: scale(1.15);
+        color: #000 !important;
+    }
+    
+    /* 3. TIRA O ESPAÇAMENTO DAS COLUNAS DENTRO DO CARD */
+    [data-testid="stSidebar"] [data-testid="column"] {
+        padding-left: 5px !important;
+        padding-right: 5px !important;
+    }
+
+    /* 4. FORMATAÇÃO GERAL DA SIDEBAR */
     [data-testid="stSidebar"] {
         background-color: #F8FAFC !important;
         border-right: 1px solid #E2E8F0 !important;
@@ -793,28 +824,6 @@ st.markdown("""
         width: 100%; text-align: left; justify-content: flex-start;
         border-radius: 8px; padding: 0.5rem 1rem; font-weight: 600;
         margin-bottom: 4px; transition: all 0.2s ease;
-    }
-    
-    /* 3. Estilização INVISÍVEL do botão da Engrenagem */
-    /* Esconde a seta para baixo do dropdown */
-    [data-testid="stSidebar"] [data-testid="stPopover"] > button svg {
-        display: none !important;
-    }
-    /* Tira a borda e fundo do botão para não esbarrar no card */
-    [data-testid="stSidebar"] [data-testid="stPopover"] > button {
-        background-color: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        padding: 0 !important;
-        font-size: 1.25rem !important;
-        color: #475569 !important;
-        justify-content: center !important;
-        width: 100% !important;
-    }
-    [data-testid="stSidebar"] [data-testid="stPopover"] > button:hover {
-        transform: scale(1.1);
-        color: #1E293B !important;
-        background-color: transparent !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -825,23 +834,24 @@ st.markdown("""
 
 card_usuario = st.sidebar.container(border=True)
 
-# Colunas ajustadas para a engrenagem ter espaço folgado
-col_texto, col_engrenagem = card_usuario.columns([4.5, 1.2], vertical_alignment="center")
+col_texto, col_engrenagem = card_usuario.columns([5, 1])
 
 with col_texto:
     st.markdown(f"""
-        <p style='margin: 0; font-weight: 700; color: #1E293B; font-size: 0.95rem; line-height: 1.2;'>👤 {usuario_logado.get('nome')}</p>
-        <p style='margin: 0; font-size: 0.75rem; color: #64748B; margin-top: 2px;'>{perfil_ativo}</p>
+        <div style="line-height: 1.2;">
+            <p style='margin: 0; font-weight: 700; color: #1E293B; font-size: 0.95rem;'>👤 {usuario_logado.get('nome')}</p>
+            <p style='margin: 0; font-size: 0.75rem; color: #64748B; margin-top: 2px;'>{perfil_ativo}</p>
+        </div>
     """, unsafe_allow_html=True)
 
 with col_engrenagem:
-    # A Engrenagem sem seta e sem borda
+    # O popover agora é apenas a engrenagem limpa
     with st.popover("⚙️"):
-        st.markdown("<p style='margin-bottom: 5px; font-weight: 600; font-size: 0.9rem;'>Trocar Senha</p>", unsafe_allow_html=True)
+        st.markdown("<p style='margin-bottom: 5px; font-weight: 600; font-size: 0.9rem;'>⚙️ Opções da Conta</p>", unsafe_allow_html=True)
         nova_s = st.text_input("Nova senha", type="password", key="input_ns", placeholder="Mín. 6 caracteres")
         conf_s = st.text_input("Confirme", type="password", key="input_cs")
         
-        if st.button("Atualizar", use_container_width=True):
+        if st.button("Salvar Nova Senha", use_container_width=True):
             if len(nova_s) < 6:
                 st.error("Mínimo 6 caracteres.")
             elif nova_s != conf_s:
@@ -926,7 +936,6 @@ if perfil_ativo == "Admin":
     nav_button("Gestão de Usuários", "👥")
 
 page = st.session_state.page
-# ==========================================
 # ==========================================
 # RESUMO DO DIA 
 # ==========================================
