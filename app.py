@@ -765,18 +765,40 @@ usuario_match = next((u for u in usuarios_db if u.get('email') == user_email_log
 if usuario_match:
     usuario_logado = usuario_match
 else:
-    # CORREÇÃO DE SEGURANÇA: Se o usuário fez login mas não está na tabela, bloqueia.
+    # CORREÇÃO DE SEGURANÇA
     usuario_logado = {"nome": user_email_logado, "perfil": "Sem Acesso", "id": None, "email": user_email_logado}
 
 st.session_state["usuario_logado"] = usuario_logado
 perfil_ativo = usuario_logado.get("perfil", "Sem Acesso")
 
 # ==========================================
+# CSS: MATA O ESPAÇO NO TOPO DA SIDEBAR E AJUSTA BOTÕES
+# ==========================================
+st.markdown("""
+    <style>
+    /* 1. Remove o espaço em branco gigante nativo do topo da Sidebar */
+    [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+        padding-top: 1.5rem !important; /* Ajuste fino (reduzido de 6rem do padrão) */
+    }
+    
+    /* 2. Cores e estilos dos botões da Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #F8FAFC !important;
+        border-right: 1px solid #E2E8F0 !important;
+    }
+    [data-testid="stSidebar"] .stButton button {
+        width: 100%; text-align: left; justify-content: flex-start;
+        border-radius: 8px; padding: 0.5rem 1rem; font-weight: 600;
+        margin-bottom: 4px; transition: all 0.2s ease;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# ==========================================
 # NOVO CARD DO USUÁRIO COMPACTO (COM MENU FLUTUANTE)
 # ==========================================
-st.sidebar.write("") # Pequeno respiro visual no topo
 
-# Cria uma caixa com borda para simular o card
+# Cria uma caixa com borda para simular o card (AGORA DIRETO NO TOPO)
 card_usuario = st.sidebar.container(border=True)
 
 # Divide a caixa: Nome à esquerda, Engrenagem à direita
@@ -789,7 +811,7 @@ with col_texto:
     """, unsafe_allow_html=True)
 
 with col_engrenagem:
-    # O popover abre um menu sobreposto ao invés de empurrar a tela para baixo!
+    # O popover abre um menu sobreposto ao invés de empurrar a tela para baixo
     with st.popover("⚙️"):
         st.markdown("<p style='margin-bottom: 5px; font-weight: 600; font-size: 0.9rem;'>Trocar Senha</p>", unsafe_allow_html=True)
         nova_s = st.text_input("Nova senha", type="password", key="input_ns", placeholder="Mín. 6 caracteres")
@@ -817,6 +839,8 @@ with col_engrenagem:
             st.rerun()
 
 # ==========================================
+# RENDERIZAÇÃO DOS MENUS DE ACESSO
+# ==========================================
 
 # Lógica da página inicial baseada no perfil
 if "page" not in st.session_state:
@@ -828,20 +852,6 @@ if "page" not in st.session_state:
         st.session_state.page = "Painel de Eventos"
     else:
         st.session_state.page = "Bloqueado"
-
-st.markdown("""
-    <style>
-    [data-testid="stSidebar"] {
-        background-color: #F8FAFC !important;
-        border-right: 1px solid #E2E8F0 !important;
-    }
-    [data-testid="stSidebar"] .stButton button {
-        width: 100%; text-align: left; justify-content: flex-start;
-        border-radius: 8px; padding: 0.5rem 1rem; font-weight: 600;
-        margin-bottom: 4px; transition: all 0.2s ease;
-    }
-    </style>
-""", unsafe_allow_html=True)
 
 def secao(nome):
     st.sidebar.markdown(f"<p style='color:#94A3B8;font-size:0.68rem;font-weight:700;letter-spacing:0.08em;margin:10px 0 2px 4px;'>{nome}</p>", unsafe_allow_html=True)
@@ -893,7 +903,6 @@ if perfil_ativo == "Admin":
     nav_button("Gestão de Usuários", "👥")
 
 page = st.session_state.page
-# ==========================================
 # ==========================================
 # ==========================================
 # ==========================================
