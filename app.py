@@ -758,8 +758,6 @@ eventos_db = carregar("eventos")
 contas_bancarias_db = carregar("contas_bancarias")
 usuarios_db = carregar_usuarios()
 
-st.sidebar.markdown("<h4 style='margin-top:0px;'>🔑 Acesso ao Sistema</h4>", unsafe_allow_html=True)
-
 # Buscar o perfil baseado no email do Auth logado
 user_email_logado = st.session_state["session"].user.email
 usuario_match = next((u for u in usuarios_db if u.get('email') == user_email_logado), None)
@@ -767,49 +765,58 @@ usuario_match = next((u for u in usuarios_db if u.get('email') == user_email_log
 if usuario_match:
     usuario_logado = usuario_match
 else:
-    # CORREÇÃO DE SEGURANÇA: Se o usuário fez login mas não está na tabela,
-    # ele é bloqueado imediatamente com o perfil "Sem Acesso".
+    # CORREÇÃO DE SEGURANÇA: Se o usuário fez login mas não está na tabela, bloqueia.
     usuario_logado = {"nome": user_email_logado, "perfil": "Sem Acesso", "id": None, "email": user_email_logado}
 
 st.session_state["usuario_logado"] = usuario_logado
 perfil_ativo = usuario_logado.get("perfil", "Sem Acesso")
 
-# Exibe o card do usuário logado e botão de sair
-st.sidebar.markdown(f"""
-    <div style='padding: 12px; background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; margin-bottom: 0px;'>
+# ==========================================
+# NOVO CARD DO USUÁRIO COMPACTO (COM MENU FLUTUANTE)
+# ==========================================
+st.sidebar.write("") # Pequeno respiro visual no topo
+
+# Cria uma caixa com borda para simular o card
+card_usuario = st.sidebar.container(border=True)
+
+# Divide a caixa: Nome à esquerda, Engrenagem à direita
+col_texto, col_engrenagem = card_usuario.columns([4, 1], vertical_alignment="center")
+
+with col_texto:
+    st.markdown(f"""
         <p style='margin: 0; font-weight: 700; color: #1E293B; font-size: 0.95rem;'>👤 {usuario_logado.get('nome')}</p>
         <p style='margin: 0; font-size: 0.75rem; color: #64748B; margin-top: 2px;'>{perfil_ativo}</p>
-    </div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+
+with col_engrenagem:
+    # O popover abre um menu sobreposto ao invés de empurrar a tela para baixo!
+    with st.popover("⚙️"):
+        st.markdown("<p style='margin-bottom: 5px; font-weight: 600; font-size: 0.9rem;'>Trocar Senha</p>", unsafe_allow_html=True)
+        nova_s = st.text_input("Nova senha", type="password", key="input_ns", placeholder="Mín. 6 caracteres")
+        conf_s = st.text_input("Confirme", type="password", key="input_cs")
+        
+        if st.button("Atualizar", use_container_width=True):
+            if len(nova_s) < 6:
+                st.error("Mínimo 6 caracteres.")
+            elif nova_s != conf_s:
+                st.error("Senhas não coincidem.")
+            else:
+                with st.spinner("Atualizando..."):
+                    try:
+                        supabase.auth.update_user({"password": nova_s})
+                        st.success("✅ Atualizada!")
+                    except Exception as e:
+                        st.error(f"Erro: {e}")
+        
+        st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+        
+        if st.button("🚪 Sair (Logout)", type="primary", use_container_width=True):
+            supabase.auth.sign_out()
+            st.session_state["session"] = None
+            st.cache_data.clear()
+            st.rerun()
 
 # ==========================================
-# NOVO BLOCO INSERIDO: TROCA DE SENHA
-# ==========================================
-with st.sidebar.expander("⚙️ Trocar Senha"):
-    nova_s = st.text_input("Nova senha (mín. 6 caracteres)", type="password", key="input_ns")
-    conf_s = st.text_input("Confirme a senha", type="password", key="input_cs")
-    
-    if st.button("Atualizar Senha", use_container_width=True):
-        if len(nova_s) < 6:
-            st.error("A senha deve ter no mínimo 6 caracteres.")
-        elif nova_s != conf_s:
-            st.error("As senhas não coincidem.")
-        else:
-            with st.spinner("Atualizando..."):
-                try:
-                    # Atualiza a senha direto no cofre do Supabase
-                    supabase.auth.update_user({"password": nova_s})
-                    st.success("✅ Senha atualizada com sucesso!")
-                except Exception as e:
-                    st.error(f"Erro ao atualizar a senha: {e}")
-st.sidebar.write("") # Pequeno espaço visual antes do botão de Sair
-# ==========================================
-
-if st.sidebar.button("🚪 Sair (Logout)", use_container_width=True):
-    supabase.auth.sign_out()
-    st.session_state["session"] = None
-    st.cache_data.clear()
-    st.rerun()
 
 # Lógica da página inicial baseada no perfil
 if "page" not in st.session_state:
@@ -844,8 +851,6 @@ def nav_button(label, icon):
     if st.sidebar.button(f"{icon}  {label}", key=f"nav_{label}", use_container_width=True, type="primary" if ativo else "secondary"):
         st.session_state.page = label
         st.rerun()
-
-st.sidebar.markdown("<hr style='margin: 8px 0; border-color: #E2E8F0;'>", unsafe_allow_html=True)
 
 # USUÁRIO SEM ACESSO
 if perfil_ativo == "Sem Acesso":
